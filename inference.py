@@ -122,51 +122,119 @@ Preview: {e.body_preview[:150]}""")
 # ── LLM call ─────────────────────────────────────────────────────────────────
 
 def call_llm(client: OpenAI, conversation: List[Dict[str, str]]) -> str:
-    """Call the LLM and return raw text response."""
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=conversation,
-        temperature=0.2,
-        max_tokens=300,
-    )
-    return response.choices[0].message.content.strip()
+    """Call the LLM and return raw text response with exponential backoff for network errors."""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=conversation,
+                temperature=0.2,
+                max_tokens=300,
+                timeout=30,  # enforce 30s timeout per call
+            )
+            content = response.choices[0].message.content
+            if content is None:
+                raise ValueError("Empty response from API")
+            return content.strip()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"  [API Fatal] Max retries reached: {e}")
+                return ""  # Trigger fallback downstream
+            time.sleep(2 ** attempt)  # 1s, 2s, 4s
+
+    return ""
+
+def get_fallback_action(obs: Observation, email_id: Optional[str] = None) -> Action:
+    """Deterministic fallback to prevent environment crashes."""
+    known_ids = [e.id for e in obs.emails]
+    if not known_ids:
+        # Edge case: no emails available at all? Should not happen if not done.
+        return Action(action_type="ignore_email", email_id="unknown")
+        
+    if email_id and email_id in known_ids:
+        return Action(action_type="classify_email", email_id=email_id, category="general_inquiry")
+    
+    # Priority fallback if email_id missing or invalid
+    return Action(action_type="ignore_email", email_id=known_ids[0])
 
 
-def parse_action(raw: str, obs: Observation) -> Optional[Action]:
-    """Parse LLM output into an Action object."""
-    # Strip markdown code blocks if present
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+def parse_action(raw: str, obs: Observation) -> Action:
+    """Parse LLM output into an Action object via bracket matching, returning fallback on any fail."""
+    if not raw:
+        return get_fallback_action(obs)
 
+    # 1. Strip markdown code blocks if present
+    text = raw.strip()
+    if text.startswith("```"):
+        parts = text.split("```")
+        if len(parts) >= 3:
+            text = parts[1]
+            if text.startswith("json"):
+                text = text[4:]
+            text = text.strip()
+
+    # 2. Bracket Matching for JSON extraction
+    start_idx = text.find("{")
+    if start_idx == -1:
+        return get_fallback_action(obs)
+        
+    bracket_depth = 0
+    end_idx = -1
+    for i in range(start_idx, len(text)):
+        if text[i] == "{":
+            bracket_depth += 1
+        elif text[i] == "}":
+            bracket_depth -= 1
+            if bracket_depth == 0:
+                end_idx = i
+                break
+                
+    if end_idx == -1:
+        return get_fallback_action(obs)
+        
+    json_str = text[start_idx:end_idx+1]
+
+    # 3. Attempt JSON parse
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        print(f"  [parse error] Could not parse JSON: {raw[:200]}")
-        return None
+        data = json.loads(json_str)
+    except Exception:
+        return get_fallback_action(obs)
 
-    # Build a safe Action — only include fields that are not None
+    # 4. Action Validation
+    if not isinstance(data, dict):
+        return get_fallback_action(obs)
+        
+    action_type = data.get("action_type")
+    email_id = data.get("email_id")
+    
+    valid_actions = {
+        "classify_email", "set_priority", "draft_reply", 
+        "mark_resolved", "escalate_email", "ignore_email"
+    }
+    
+    if action_type not in valid_actions:
+        return get_fallback_action(obs, email_id)
+        
+    if not email_id:
+        return get_fallback_action(obs)
+
+    known_ids = {e.id for e in obs.emails}
+    if email_id not in known_ids:
+        return get_fallback_action(obs)
+
+    # Construct safe final action
     try:
         action = Action(
-            action_type=data.get("action_type", ""),
-            email_id=data.get("email_id", ""),
+            action_type=action_type,
+            email_id=email_id,
             category=data.get("category"),
             level=data.get("level"),
             text=data.get("text"),
         )
-    except Exception as e:
-        print(f"  [action error] Invalid action fields: {e}")
-        return None
-
-    # Verify email_id exists in current obs
-    known_ids = {e.id for e in obs.emails}
-    if action.email_id not in known_ids:
-        print(f"  [action error] Unknown email_id: {action.email_id}")
-        return None
-
-    return action
+        return action
+    except Exception:
+        return get_fallback_action(obs, email_id)
 
 
 # ── Agent loop ────────────────────────────────────────────────────────────────
@@ -205,47 +273,64 @@ def run_agent(client: OpenAI, task_id: str, verbose: bool = True) -> Dict[str, A
         if env._done:
             break
 
+        fallback_used = False
+        error_msg = "None"
+        reward = 0.0
+
         # Build user message from current observation
         user_msg = obs_to_prompt(obs)
         conversation.append({"role": "user", "content": user_msg})
 
         # Call LLM
         t0 = time.time()
-        try:
-            raw = call_llm(client, conversation)
-        except Exception as e:
-            print(f"  [LLM error] {e}")
-            break
+        raw = call_llm(client, conversation)
         step_times.append(time.time() - t0)
 
-        # Parse action
+        # Parse action (guaranteed to return valid Action via fallback)
+        action_before_fallback_check = raw
         action = parse_action(raw, obs)
-        if action is None:
-            invalid_count += 1
-            conversation.append({"role": "assistant", "content": raw})
-            conversation.append({
-                "role": "user",
-                "content": "Invalid action format. Respond with valid JSON only."
-            })
-            continue
+        
+        # Determine if fallback logic activated
+        if not raw or raw.find("{") == -1 or getattr(action, "_is_fallback", False) or action.action_type not in raw:
+            fallback_used = True
+            error_msg = "LLM parse failure bounded to fallback"
 
-        # Apply action
-        obs, reward, done, info = env.step(action)
-        total_reward += reward
+        # Apply action inside strict try/except
+        try:
+            obs, reward, done, info = env.step(action)
+            total_reward += reward
+        except Exception as e:
+            error_msg = f"Env Step Exception: {str(e)}"
+            fallback_used = True
+            
+            # Inject ultimate override to prevent crash blocking
+            fallback_action = get_fallback_action(obs)
+            try:
+                obs, reward, done, info = env.step(fallback_action)
+                action = fallback_action
+                total_reward += reward
+            except Exception as e_inner:
+                print(f"  [CRITICAL] Fallback failure at Step {step+1}: {e_inner}")
+                break
 
         # Add assistant reply to conversation
-        conversation.append({"role": "assistant", "content": raw})
+        conversation.append({"role": "assistant", "content": raw if raw else '{"action_type": "ignore_email"}'})
 
         if verbose:
-            status = "✓" if info.get("valid") else "✗"
-            print(
-                f"  Step {step+1:03d} {status} | {action.action_type:<18} | "
-                f"{action.email_id} | reward={reward:+.3f} | "
-                f"pending={obs.pending_count}"
-            )
+            print(f"\n[STEP {step+1:03d}]")
+            print(f"Action: {action.action_type} ({action.email_id})")
+            print(f"Reward: {reward:+.3f}")
+            print(f"Fallback: {'YES' if fallback_used else 'NO'}")
+            print(f"Error: {error_msg}")
 
         if done:
             break
+
+    # Guard envelope safely closing environment memory
+    try:
+        env.close()
+    except Exception:
+        pass
 
     # Grade final state
     final_state = env.state()
@@ -306,18 +391,16 @@ def main() -> None:
         result = run_agent(client, task_id, verbose=verbose)
         all_results[task_id] = result
 
-    # Summary across tasks
-    if len(tasks_to_run) > 1:
-        avg_score = sum(r["scores"]["final_score"] for r in all_results.values()) / len(all_results)
-        print(f"\nAGGREGATE SCORE: {avg_score:.3f} (average across {len(tasks_to_run)} tasks)")
+    # Print exact required output formats for final scores
+    print()
+    for task_id in tasks_to_run:
+        score = all_results.get(task_id, {}).get("scores", {}).get("final_score", 0.0)
+        print(f"FINAL SCORE ({task_id}): {score:.2f}")
 
     if args.output:
         with open(args.output, "w") as f:
             json.dump(all_results, f, indent=2)
         print(f"\nResults written to: {args.output}")
-    else:
-        print("\nFINAL RESULTS:")
-        print(json.dumps(all_results, indent=2))
 
 
 if __name__ == "__main__":
