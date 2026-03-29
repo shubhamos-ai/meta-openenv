@@ -12,27 +12,24 @@ A production-grade OpenEnv-compatible environment that simulates real-world emai
 
 ### Validated
 
-<!-- Shipped and confirmed valuable. -->
-
-(None yet — ship to validate)
+- ✓ OpenEnv spec compliance (step/reset/state with typed Pydantic models) — v1.0
+- ✓ Email simulation engine with realistic content and categories (spam, general inquiry, billing issue, urgent complaint) — v1.0
+- ✓ Action system: classify_email, set_priority, draft_reply, mark_resolved, escalate_email, ignore_email — v1.0
+- ✓ Observation system: email list with metadata, global stats, time progression — v1.0
+- ✓ Dense reward function with partial progress signals and penalties — v1.0
+- ✓ Three difficulty-tiered tasks (easy: 5–8 emails, medium: 15–25, hard: 40–60) — v1.0
+- ✓ Deterministic graders per task scoring 0.0–1.0 — v1.0
+- ✓ Episode management with max steps and clean reset — v1.0
+- ✓ Baseline inference script using OpenAI client via HF Router — v1.0
+- ✓ Working Dockerfile for HF Spaces deployment — v1.0
+- ✓ openenv.yaml metadata file — v1.0
+- ✓ Comprehensive README with full documentation — v1.0
+- ✓ Minimal web dashboard (inbox view, status indicators, basic stats) — v1.0
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
-
-- [ ] OpenEnv spec compliance (step/reset/state with typed Pydantic models)
-- [ ] Email simulation engine with realistic content and categories (spam, general inquiry, billing issue, urgent complaint)
-- [ ] Action system: classify_email, set_priority, draft_reply, mark_resolved, escalate_email, ignore_email
-- [ ] Observation system: email list with metadata, global stats, time progression
-- [ ] Dense reward function with partial progress signals and penalties
-- [ ] Three difficulty-tiered tasks (easy: 5–8 emails, medium: 15–25, hard: 40–60)
-- [ ] Deterministic graders per task scoring 0.0–1.0
-- [ ] Episode management with max steps and clean reset
-- [ ] Baseline inference script using OpenAI client via HF Router
-- [ ] Working Dockerfile for HF Spaces deployment
-- [ ] openenv.yaml metadata file
-- [ ] Comprehensive README with full documentation
-- [ ] Minimal web dashboard (inbox view, status indicators, basic stats)
+(Pending v1.1 requirements from `/gsd-new-milestone`)
 
 ### Out of Scope
 
@@ -104,11 +101,11 @@ score = (classification_accuracy * 0.3 + priority_accuracy * 0.3 + resolution_ra
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Use HF Router instead of NVIDIA SDK | Hackathon requires OpenAI client; HF Router is OpenAI-compatible and free | — Pending |
-| Include minimal dashboard in v1 | Bonus points for UI, but environment logic is priority | — Pending |
-| Docker deployment (not Gradio/Streamlit) | Cleaner for OpenEnv API endpoints, more control | — Pending |
-| Dense reward over sparse | Hackathon scores on "useful varying signal" — dense rewards score higher | — Pending |
-| Fixed email datasets per task | Reproducibility is critical for evaluation and grading | — Pending |
+| Use HF Router instead of NVIDIA SDK | Hackathon requires OpenAI client; HF Router is OpenAI-compatible and free | ✓ Good |
+| Include minimal dashboard in v1 | Bonus points for UI, but environment logic is priority | ✓ Good |
+| Docker deployment (not Gradio/Streamlit) | Cleaner for OpenEnv API endpoints, more control | ✓ Good |
+| Dense reward over sparse | Hackathon scores on "useful varying signal" — dense rewards score higher | ✓ Good |
+| Fixed email datasets per task | Reproducibility is critical for evaluation and grading | ✓ Good |
 
 ## Evolution
 
@@ -128,4 +125,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after initialization*
+*Last updated: 2026-03-29 after v1.0 milestone*
