@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SHUBHAMOS — Email Triage Environment</title>
+  <style>
+    /* ── Design tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #238636;
+      --accent-hover: #2ea043;
+      --warn: #d29922;
+      --danger: #da3633;
+      --info: #388bfd;
+      --purple: #8957e5;
+      --radius: 8px;
+      --font: 'Inter', system-ui, sans-serif;
+      --mono: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Fonts ─────────────────────────────────────────────────────────────── */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    /* ── Header ────────────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--info), var(--purple));
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .logo h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .logo span {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* ── Status badge ──────────────────────────────────────────────────────── */
+    .badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .badge-green { background: rgba(35,134,54,0.2); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+    .badge-yellow { background: rgba(210,153,34,0.2); color: #e3b341; border: 1px solid rgba(210,153,34,0.3); }
+    .badge-red { background: rgba(218,54,51,0.2); color: #f85149; border: 1px solid rgba(218,54,51,0.3); }
+    .badge-blue { background: rgba(56,139,253,0.2); color: #79c0ff; border: 1px solid rgba(56,139,253,0.3); }
+
+    /* ── Layout ────────────────────────────────────────────────────────────── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+      flex: 1;
+    }
+
+    /* ── Stats row ─────────────────────────────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      transition: border-color 0.2s;
+    }
+
+    .stat-card:hover { border-color: var(--info); }
+
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: var(--mono);
+      color: var(--text);
+    }
+
+    .stat-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* ── Two-column layout ─────────────────────────────────────────────────── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Panel ─────────────────────────────────────────────────────────────── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .panel-body { padding: 0; }
+
+    /* ── Email list ────────────────────────────────────────────────────────── */
+    .email-list { max-height: 520px; overflow-y: auto; }
+
+    .email-item {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .email-item:hover { background: var(--surface2); }
+    .email-item:last-child { border-bottom: none; }
+    .email-item.active { background: rgba(56,139,253,0.08); border-left: 3px solid var(--info); }
+
+    .email-subject {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .email-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .email-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+
+    .pill {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .pill-spam      { background: rgba(139,148,158,0.15); color: #8b949e; }
+    .pill-inquiry   { background: rgba(56,139,253,0.15); color: #79c0ff; }
+    .pill-billing   { background: rgba(210,153,34,0.15); color: #e3b341; }
+    .pill-urgent    { background: rgba(218,54,51,0.15); color: #f85149; }
+    .pill-resolved  { background: rgba(35,134,54,0.15); color: #3fb950; }
+    .pill-escalated { background: rgba(137,87,229,0.15); color: #d2a8ff; }
+    .pill-ignored   { background: rgba(139,148,158,0.1); color: #6e7681; }
+    .pill-low       { background: rgba(139,148,158,0.1); color: #8b949e; }
+    .pill-medium    { background: rgba(210,153,34,0.1); color: #e3b341; }
+    .pill-high      { background: rgba(218,54,51,0.15); color: #f85149; }
+
+    /* ── Right panel ───────────────────────────────────────────────────────── */
+    .right-col { display: flex; flex-direction: column; gap: 16px; }
+
+    /* ── Controls ──────────────────────────────────────────────────────────── */
+    .controls { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+
+    select, input[type="text"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: var(--font);
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    select:focus, input:focus { border-color: var(--info); }
+
+    label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .btn {
+      padding: 9px 16px;
+      border-radius: var(--radius);
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: var(--font);
+      width: 100%;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    /* ── Progress bar ──────────────────────────────────────────────────────── */
+    .progress-wrap {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: var(--surface2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--info), var(--purple));
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+
+    /* ── Score display ─────────────────────────────────────────────────────── */
+    .score-section {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .score-item { text-align: center; }
+    .score-val {
+      font-size: 22px;
+      font-weight: 700;
+      font-family: var(--mono);
+    }
+    .score-name { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── Log ───────────────────────────────────────────────────────────────── */
+    .log {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 12px;
+      max-height: 160px;
+      overflow-y: auto;
+      line-height: 1.7;
+      background: var(--bg);
+    }
+
+    .log-entry-ok   { color: #3fb950; }
+    .log-entry-err  { color: #f85149; }
+    .log-entry-info { color: #79c0ff; }
+
+    /* ── Empty state ───────────────────────────────────────────────────────── */
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+    .empty-icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-text { font-size: 14px; }
+
+    /* ── Scrollbar ─────────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">✉️</div>
+    <div>
+      <h1>SHUBHAMOS</h1>
+      <span>AI Email Operations &amp; Triage Environment</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="badge badge-green" id="api-status">● API Online</span>
+  </div>
+</header>
+
+<!-- ── Main ────────────────────────────────────────────────────────────────── -->
+<div class="container">
+
+  <!-- Stats row -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Emails</div>
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-sub">this episode</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Pending</div>
+      <div class="stat-value" id="stat-pending" style="color:#e3b341">—</div>
+      <div class="stat-sub">awaiting action</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Resolved</div>
+      <div class="stat-value" id="stat-resolved" style="color:#3fb950">—</div>
+      <div class="stat-sub">completed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Steps Used</div>
+      <div class="stat-value" id="stat-steps">—</div>
+      <div class="stat-sub" id="stat-steps-sub">of — max</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Final Score</div>
+      <div class="stat-value" id="stat-score">—</div>
+      <div class="stat-sub" id="stat-pass">not graded</div>
+    </div>
+  </div>
+
+  <!-- Two-column grid -->
+  <div class="main-grid">
+
+    <!-- Email list panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>📥 Inbox</span>
+        <span class="badge badge-blue" id="inbox-count">0 emails</span>
+      </div>
+      <div class="panel-body">
+        <div class="email-list" id="email-list">
+          <div class="empty">
+            <div class="empty-icon">📭</div>
+            <div class="empty-text">Start an episode to load emails</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column -->
+    <div class="right-col">
+
+      <!-- Controls panel -->
+      <div class="panel">
+        <div class="panel-header">⚙️ Controls</div>
+        <div class="controls">
+          <div>
+            <label for="task-select">Task Difficulty</label>
+            <select id="task-select">
+              <option value="easy">Easy — 8 emails (seed 42)</option>
+              <option value="medium">Medium — 20 emails (seed 123)</option>
+              <option value="hard">Hard — 50 emails (seed 999)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="resetEpisode()">▶ Start Episode</button>
+          <button class="btn btn-secondary" onclick="gradeEpisode()">🏆 Grade Episode</button>
+          <button class="btn btn-secondary" onclick="refreshState()">↺ Refresh State</button>
+        </div>
+
+        <!-- Step progress -->
+        <div class="progress-wrap">
+          <div class="progress-label">
+            <span>Episode Progress</span>
+            <span id="prog-label">—</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="prog-fill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Score panel -->
+      <div class="panel">
+        <div class="panel-header">🏆 Grade Breakdown</div>
+        <div class="score-section">
+          <div class="score-item">
+            <div class="score-val" id="s-class" style="color:#79c0ff">—</div>
+            <div class="score-name">Classification</div>
+          </div>
+          <div class="score-item">
+            <div class="score-val" id="s-priority" style="color:#e3b341">—</div>
+            <div class="score-name">Priority</div>
+          </div>
+          <div class="score-item">
+            <div class="score-val" id="s-resolution" style="color:#3fb950">—</div>
+            <div class="score-name">Resolution</div>
+          </div>
+          <div class="score-item">
+            <div class="score-val" id="s-urgent" style="color:#f85149">—</div>
+            <div class="score-name">Urgent</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity log -->
+      <div class="panel">
+        <div class="panel-header">📋 Activity Log</div>
+        <div class="log" id="log">
+          <span class="log-entry-info">Dashboard initialized. Start an episode to begin.</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── API helpers ───────────────────────────────────────────────────────────────
+
+const API = '';  // same origin
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (!r.ok) {
+    const err = await r.text();
+    throw new Error(`${r.status}: ${err}`);
+  }
+  return r.json();
+}
+
+// ── Log ───────────────────────────────────────────────────────────────────────
+
+function log(msg, type = 'info') {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = `log-entry-${type}`;
+  const ts = new Date().toLocaleTimeString();
+  line.textContent = `[${ts}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Status check ──────────────────────────────────────────────────────────────
+
+async function checkHealth() {
+  try {
+    await api('GET', '/health');
+    document.getElementById('api-status').textContent = '● API Online';
+    document.getElementById('api-status').className = 'badge badge-green';
+  } catch {
+    document.getElementById('api-status').textContent = '● API Offline';
+    document.getElementById('api-status').className = 'badge badge-red';
+  }
+}
+
+// ── Episode control ───────────────────────────────────────────────────────────
+
+async function resetEpisode() {
+  const taskId = document.getElementById('task-select').value;
+  try {
+    log(`Starting episode: task=${taskId}...`, 'info');
+    const obs = await api('POST', '/reset', { task_id: taskId });
+    log(`Episode started — ${obs.total_emails} emails loaded`, 'ok');
+    renderObs(obs);
+    clearGrade();
+  } catch (e) {
+    log(`Reset failed: ${e.message}`, 'err');
+  }
+}
+
+async function refreshState() {
+  try {
+    const state = await api('GET', '/state');
+    log(`State refreshed — step ${state.step_count}/${state.max_steps}`, 'info');
+    // Build a rough obs from state for display
+    renderEmailsFromState(state);
+    updateStats(state.step_count, state.max_steps, state.emails);
+  } catch (e) {
+    log(`Refresh failed: ${e.message}`, 'err');
+  }
+}
+
+async function gradeEpisode() {
+  try {
+    const report = await api('GET', '/grade');
+    log(`Graded: ${(report.scores.final_score * 100).toFixed(1)}% — ${report.passed ? 'PASS ✓' : 'FAIL ✗'}`, report.passed ? 'ok' : 'err');
+    renderGrade(report);
+  } catch (e) {
+    log(`Grade failed: ${e.message}`, 'err');
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function renderObs(obs) {
+  updateStats(obs.step_count, obs.max_steps, obs.emails);
+  const list = document.getElementById('email-list');
+  list.innerHTML = '';
+  document.getElementById('inbox-count').textContent = `${obs.total_emails} emails`;
+
+  obs.emails.forEach(e => {
+    const item = document.createElement('div');
+    item.className = 'email-item';
+    item.innerHTML = `
+      <div>
+        <div class="email-subject">${escHtml(e.subject)}</div>
+        <div class="email-meta">
+          <span>${escHtml(e.sender)}</span>
+          <span>${e.sentiment}</span>
+        </div>
+        <div class="email-badges" style="margin-top:5px">
+          ${categoryPill(e.category)}
+          ${priorityPill(e.priority)}
+          ${statusPill(e)}
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);white-space:nowrap">${e.id}</div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+function renderEmailsFromState(state) {
+  const list = document.getElementById('email-list');
+  list.innerHTML = '';
+  document.getElementById('inbox-count').textContent = `${state.emails.length} emails`;
+  state.emails.forEach(e => {
+    const item = document.createElement('div');
+    item.className = 'email-item';
+    item.innerHTML = `
+      <div>
+        <div class="email-subject">${escHtml(e.subject)}</div>
+        <div class="email-meta"><span>${escHtml(e.sender)}</span></div>
+        <div class="email-badges" style="margin-top:5px">
+          ${categoryPill(e.category)}
+          ${priorityPill(e.priority)}
+          ${statusPill(e)}
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted)">${e.id}</div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+function updateStats(step, max, emails) {
+  const total   = emails.length;
+  const resolved   = emails.filter(e => e.resolved).length;
+  const escalated  = emails.filter(e => e.escalated).length;
+  const ignored    = emails.filter(e => e.ignored).length;
+  const pending    = total - resolved - escalated - ignored;
+
+  document.getElementById('stat-total').textContent   = total;
+  document.getElementById('stat-pending').textContent  = pending;
+  document.getElementById('stat-resolved').textContent = resolved;
+  document.getElementById('stat-steps').textContent    = step;
+  document.getElementById('stat-steps-sub').textContent = `of ${max} max`;
+  document.getElementById('prog-label').textContent     = `${step} / ${max} steps`;
+
+  const pct = max > 0 ? (step / max * 100).toFixed(1) : 0;
+  document.getElementById('prog-fill').style.width = pct + '%';
+}
+
+function renderGrade(r) {
+  const s = r.scores;
+  const fmt = v => (v * 100).toFixed(1) + '%';
+  document.getElementById('stat-score').textContent  = fmt(s.final_score);
+  document.getElementById('stat-pass').textContent   = r.passed ? '✓ PASS' : '✗ FAIL';
+  document.getElementById('stat-pass').style.color   = r.passed ? '#3fb950' : '#f85149';
+  document.getElementById('s-class').textContent     = fmt(s.classification_accuracy);
+  document.getElementById('s-priority').textContent  = fmt(s.priority_accuracy);
+  document.getElementById('s-resolution').textContent = fmt(s.resolution_rate);
+  document.getElementById('s-urgent').textContent    = fmt(s.urgent_handling);
+}
+
+function clearGrade() {
+  ['stat-score','s-class','s-priority','s-resolution','s-urgent'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+  });
+  document.getElementById('stat-pass').textContent = 'not graded';
+  document.getElementById('stat-pass').style.color = '';
+}
+
+// ── Pill helpers ──────────────────────────────────────────────────────────────
+
+function categoryPill(cat) {
+  if (!cat) return '<span class="pill" style="background:var(--surface2);color:var(--text-muted)">unclassified</span>';
+  const map = {
+    spam: 'pill-spam',
+    general_inquiry: 'pill-inquiry',
+    billing_issue: 'pill-billing',
+    urgent_complaint: 'pill-urgent',
+  };
+  return `<span class="pill ${map[cat] || ''}">${cat.replace('_', ' ')}</span>`;
+}
+
+function priorityPill(p) {
+  if (!p || p === 'unknown') return '';
+  return `<span class="pill pill-${p}">${p}</span>`;
+}
+
+function statusPill(e) {
+  if (e.resolved)  return '<span class="pill pill-resolved">resolved</span>';
+  if (e.escalated) return '<span class="pill pill-escalated">escalated</span>';
+  if (e.ignored)   return '<span class="pill pill-ignored">ignored</span>';
+  return '<span class="pill" style="background:rgba(56,139,253,0.1);color:#79c0ff">pending</span>';
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+checkHealth();
+setInterval(checkHealth, 30000);
+</script>
+</body>
+</html>
