@@ -26,5 +26,5 @@ COPY . .
 # Expose the port used by Hugging Face Spaces (and our FastAPI server)
 EXPOSE 7860
 
-# Run the FastAPI server using uvicorn
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7860"]
+# Run the FastAPI server using uvicorn (dynamic port for HF Spaces)
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port $PORT"]
