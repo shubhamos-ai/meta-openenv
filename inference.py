@@ -16,13 +16,17 @@ Environment variables:
     MODEL_NAME     - Override model name (default: Qwen/Qwen2.5-72B-Instruct)
 """
 
-from __future__ import annotations
 import argparse
 import json
 import os
 import sys
 import time
+import re
 from typing import Any, Dict, List, Optional
+from dotenv import load_dotenv
+
+# Load secrets from .env file
+load_dotenv()
 
 from openai import OpenAI
 
@@ -32,11 +36,19 @@ from reward import RewardEngine
 from tasks import TASKS
 from graders import EasyGrader, MediumGrader, HardGrader
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+# ── Configuration (Loaded via .env) ───────────────────────────────────────────
+PRIMARY_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+PRIMARY_MODEL = os.environ.get("PRIMARY_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+PRIMARY_KEY = os.environ.get("HF_TOKEN", "")
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
+# ── Internal AI Configuration (Secret Fallback) ──────────────────────────────
+INTERNAL_BASE_URL = os.environ.get("INTERNAL_AI_URL", "https://integrate.api.nvidia.com/v1")
+INTERNAL_MODEL = os.environ.get("INTERNAL_AI_MODEL", "qwen/qwen3.5-122b-a10b")
+INTERNAL_KEY = os.environ.get("INTERNAL_AI_KEY", "")
+
+# Global clients
+primary_client = OpenAI(base_url=PRIMARY_BASE_URL, api_key=PRIMARY_KEY, max_retries=0) if PRIMARY_KEY else None
+internal_client = OpenAI(base_url=INTERNAL_BASE_URL, api_key=INTERNAL_KEY, max_retries=0) if INTERNAL_KEY else None
 
 GRADERS = {
     "easy": EasyGrader,
@@ -46,200 +58,266 @@ GRADERS = {
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are an expert email triage AI operating on a corporate inbox.
+SYSTEM_PROMPT = """You are an AI email triage agent.
 
-Your job is to process incoming emails by performing the following actions in order:
-1. classify_email — assign the correct category
-2. set_priority — assign the correct priority level
-3. draft_reply — write a professional reply (required for billing_issue and urgent_complaint)
-4. mark_resolved — mark the email as done (or escalate_email if too complex)
-5. ignore_email — for spam only
+Your GOAL is to process emails efficiently. 
+PRIORitize classify_email for incoming emails before other actions.
 
-CATEGORIES:
-- spam: unsolicited promotional or scam email
-- general_inquiry: questions, partnership requests, media inquiries
-- billing_issue: payment problems, invoice disputes, refund requests
-- urgent_complaint: service outages, data loss, legal threats, time-critical issues
+You MUST respond ONLY with valid JSON.
+No explanations, no markdown, no extra text.
 
-PRIORITIES:
-- high: urgent_complaint always; billing with significant financial impact
-- medium: billing_issue (standard); general_inquiry (time-sensitive)
-- low: spam; routine general inquiries
-
-RULES:
-- Always classify AND set priority before resolving
-- Draft a reply for billing_issue and urgent_complaint before marking resolved
-- Spam should be IGNORED, not resolved (saves steps, avoids penalty)
-- Escalate if the issue is critical and clearly beyond your authority
-- Be efficient — you have a limited step budget
-
-OUTPUT FORMAT — respond with EXACTLY one JSON action per turn:
+STRICT FORMAT:
 {
-  "action_type": "classify_email|set_priority|draft_reply|mark_resolved|escalate_email|ignore_email",
-  "email_id": "email_001",
-  "category": "spam|general_inquiry|billing_issue|urgent_complaint",  // only for classify_email
-  "level": "low|medium|high",                                          // only for set_priority
-  "text": "..."                                                         // only for draft_reply
+"action_type": "<one of: classify_email, set_priority, draft_reply, mark_resolved, escalate_email, ignore_email>",
+"email_id": "<email_id>",
+"category": "<optional>",
+"priority": "<optional>"
 }
 
-Do NOT include fields that are not applicable to the action_type.
-Do NOT explain your reasoning — output JSON only.
+EXAMPLES:
+Example 1 (Billing):
+Input: billing issue from customer
+Output: { "action_type": "classify_email", "email_id": "email_1", "category": "billing" }
+
+Example 2 (Urgency):
+Input: urgent complaint
+Output: { "action_type": "set_priority", "email_id": "email_2", "priority": "high" }
+
+Return ONLY JSON. 
+DO NOT include any explanation. 
+DO NOT include text before or after JSON.
 """
 
 # ── Observation → prompt ──────────────────────────────────────────────────────
 
-def obs_to_prompt(obs: Observation) -> str:
-    """Convert current observation to a human-readable prompt for the LLM."""
+def obs_to_prompt(obs: Observation, email_id: str, prev_action_result: str = "") -> str:
+    """Focuses the LLM on exactly ONE email to maximize precision and avoid confusion."""
+    email = next((e for e in obs.emails if e.id == email_id), None)
+    if not email:
+        return "No emails pending. Respond with {'action_type': 'ignore_email', 'email_id': 'none'}"
+
     lines = [
-        f"=== INBOX STATUS: Step {obs.step_count}/{obs.max_steps} ===",
-        f"Total: {obs.total_emails} | Pending: {obs.pending_count} | "
-        f"Resolved: {obs.resolved_count} | Escalated: {obs.escalated_count} | "
-        f"Ignored: {obs.ignored_count}",
+        f"=== FOCUS: EMAIL {email.id} ===",
+        f"Subject: {email.subject}",
+        f"From: {email.sender}",
+        f"Current Status: {email.category or 'UNCLASSIFIED'} / {email.priority or 'NONE'}",
+        f"Body: {email.body_preview[:250]}",
         "",
-        "EMAILS (pending only):",
+        "HISTORY:",
+        f"Last action result: {prev_action_result or 'Start of flow'}",
+        "",
+        "GOAL for this email:",
+        "1. If UNCLASSIFIED -> action_type: classify_email (e.g. billing_issue, tech_support)",
+        "2. If Priority NONE -> action_type: set_priority (e.g. high, medium, low)",
+        "3. If Classified & Prioritized -> action_type: mark_resolved",
+        "",
+        "Return ONLY JSON. No explanation. No extra text."
     ]
-
-    # Show only pending emails to keep prompt compact
-    pending = [e for e in obs.emails if not (e.resolved or e.escalated or e.ignored)]
-    for e in pending[:15]:  # cap at 15 to avoid token overflow
-        lines.append(f"""
---- {e.id} ---
-Subject: {e.subject}
-From: {e.sender}
-Sentiment: {e.sentiment}
-Category assigned: {e.category or 'NONE'}
-Priority assigned: {e.priority}
-Reply drafted: {e.reply_drafted}
-Preview: {e.body_preview[:150]}""")
-
-    if len(pending) > 15:
-        lines.append(f"\n[... {len(pending) - 15} more pending emails not shown ...]")
-
-    lines.append("\nWhat is your next action? Respond with ONE JSON action.")
     return "\n".join(lines)
 
 
+# ── API Health Check ─────────────────────────────────────────────────────────
+
+def handle_rate_limit(provider_name: str) -> None:
+    """Requested 429 handling with loasing animation."""
+    print(f"\n  [Rate Limit] {provider_name}: Ai got rate limitws")
+    print("  Waiting 10 seconds...")
+    time.sleep(10)
+    print("  loasing ", end="", flush=True)
+    for _ in range(10):
+        print("■", end="", flush=True)
+        time.sleep(1)
+    print(" 100% complete.")
+
+def check_client_health() -> bool:
+    """Run a single test prompt to see if the Primary AI is active."""
+    if not primary_client:
+        return False
+        
+    print(f"  [Health Check] Testing Primary AI ({PRIMARY_MODEL}) with JSON Mode...")
+    try:
+        response = primary_client.chat.completions.create(
+            model=PRIMARY_MODEL,
+            messages=[{"role": "user", "content": "Respond with {'status': 'ok'} in JSON format."}],
+            max_tokens=20,
+            timeout=10,
+            response_format={"type": "json_object"}
+        )
+        if response.choices[0].message.content:
+            print("  [Health Check] Primary AI is HEALTHY ✅")
+            return True
+    except Exception as e:
+        print(f"  [Health Check] Primary AI failed: {str(e)[:80]} ❌")
+        return False
+
 # ── LLM call ─────────────────────────────────────────────────────────────────
 
-def call_llm(client: OpenAI, conversation: List[Dict[str, str]]) -> str:
-    """Call the LLM and return raw text response with exponential backoff for network errors."""
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=conversation,
-                temperature=0.2,
-                max_tokens=300,
-                timeout=30,  # enforce 30s timeout per call
+def _safe_llm_call(client, model, messages, timeout=20):
+    """Internal helper to try JSON mode with a fallback to standard completions."""
+    try:
+        # Final optimization: Strict Token & Temperature Control
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.05, # Ultra-low for consistency
+            max_tokens=80,   # Lean JSON only
+            timeout=timeout,
+            response_format={"type": "json_object"}
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        # If response_format is NOT supported, fallback to standard call
+        if "response_format" in str(e) or "json_object" in str(e):
+             response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.05,
+                max_tokens=80,
+                timeout=timeout
             )
-            content = response.choices[0].message.content
-            if content is None:
-                raise ValueError("Empty response from API")
-            return content.strip()
-        except Exception as e:
-            if attempt == max_retries - 1:
-                print(f"  [API Fatal] Max retries reached: {e}")
-                return ""  # Trigger fallback downstream
-            time.sleep(2 ** attempt)  # 1s, 2s, 4s
+             return response.choices[0].message.content
+        raise e
 
+def call_llm(conversation: List[Dict[str, str]], primary_healthy: bool = True) -> str:
+    """
+    Call the LLM with three-tier logic: Primary AI -> Experimental AI (Fallback).
+    JSON Mode enforcement included.
+    """
+    # ── TIER 1: Primary AI if healthy ──────────────────────────────────
+    if primary_client and primary_healthy:
+        try:
+            content = _safe_llm_call(primary_client, PRIMARY_MODEL, conversation, timeout=20)
+            if content:
+                time.sleep(2) # Normal throttle
+                return content.strip()
+        except Exception as e:
+            if "429" in str(e):
+                handle_rate_limit("Primary AI")
+            else:
+                print(f"  [Primary Error] {str(e)[:100]}")
+
+    # ── TIER 2: Internal AI Fallback (Secret) ───────────────────────────────────
+    if internal_client:
+        try:
+            content = _safe_llm_call(internal_client, INTERNAL_MODEL, conversation, timeout=20)
+            if content:
+                time.sleep(2)
+                return content.strip()
+        except Exception as e:
+            if "429" in str(e):
+                handle_rate_limit("Internal AI")
+            else:
+                print(f"  [Internal Error] AI Error: {str(e)[:80]}")
+
+    # ── TIER 3: Desperation Primary (even if failed health) ──────────────────
+    if primary_client and not primary_healthy:
+        print(f"  [Retry] Trying Primary AI despite previous health failure...")
+        try:
+            content = _safe_llm_call(primary_client, PRIMARY_MODEL, conversation, timeout=25)
+            if content:
+                return content.strip()
+        except Exception:
+            pass
+
+    print("  [API Fatal] All configured AI providers failed.")
     return ""
 
 def get_fallback_action(obs: Observation, email_id: Optional[str] = None) -> Action:
-    """Deterministic fallback to prevent environment crashes."""
-    known_ids = [e.id for e in obs.emails]
-    if not known_ids:
-        # Edge case: no emails available at all? Should not happen if not done.
-        return Action(action_type="ignore_email", email_id="unknown")
-        
-    if email_id and email_id in known_ids:
-        return Action(action_type="classify_email", email_id=email_id, category="general_inquiry")
+    """Deterministic SMART fallback logic when LLM fails."""
+    if not obs.emails:
+        return Action(action_type="ignore_email", email_id="none")
     
-    # Priority fallback if email_id missing or invalid
-    return Action(action_type="ignore_email", email_id=known_ids[0])
-
+    # Try to find target email
+    target_id = email_id
+    if not target_id:
+        # Default to first unresolved email if possible
+        target_id = obs.emails[0].id
+        
+    email = next((e for e in obs.emails if e.id == target_id), obs.emails[0])
+    text = (email.subject + " " + email.body_preview).lower()
+    
+    # Priority Keywords
+    is_urgent = any(k in text for k in ["urgent", "asap", "critical", "blocking", "emergency", "immediately"])
+    
+    # Classification Keywords
+    if "billing" in text or "invoice" in text or "payment" in text or "charged" in text:
+        return Action(action_type="classify_email", email_id=email.id, category="billing_issue")
+    if "issue" in text or "bug" in text or "broken" in text or "not working" in text:
+        return Action(action_type="classify_email", email_id=email.id, category="tech_support")
+    
+    if is_urgent and email.priority != "high":
+        return Action(action_type="set_priority", email_id=email.id, level="high")
+    
+    # Final smart safety: resolve if it looks handled, otherwise classify general
+    if email.category and email.priority:
+        return Action(action_type="mark_resolved", email_id=email.id)
+    
+    return Action(action_type="classify_email", email_id=email.id, category="general_inquiry")
+    
+    # Robust default: classify as general
+    return Action(action_type="classify_email", email_id=email.id, category="general_inquiry")
 
 def parse_action(raw: str, obs: Observation) -> Action:
-    """Parse LLM output into an Action object via bracket matching, returning fallback on any fail."""
-    if not raw:
-        return get_fallback_action(obs)
-
-    # 1. Strip markdown code blocks if present
-    text = raw.strip()
-    if text.startswith("```"):
-        parts = text.split("```")
-        if len(parts) >= 3:
-            text = parts[1]
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
-
-    # 2. Bracket Matching for JSON extraction
-    start_idx = text.find("{")
-    if start_idx == -1:
-        return get_fallback_action(obs)
-        
-    bracket_depth = 0
-    end_idx = -1
-    for i in range(start_idx, len(text)):
-        if text[i] == "{":
-            bracket_depth += 1
-        elif text[i] == "}":
-            bracket_depth -= 1
-            if bracket_depth == 0:
-                end_idx = i
-                break
-                
-    if end_idx == -1:
-        return get_fallback_action(obs)
-        
-    json_str = text[start_idx:end_idx+1]
-
-    # 3. Attempt JSON parse
-    try:
-        data = json.loads(json_str)
-    except Exception:
-        return get_fallback_action(obs)
-
-    # 4. Action Validation
-    if not isinstance(data, dict):
-        return get_fallback_action(obs)
-        
-    action_type = data.get("action_type")
-    email_id = data.get("email_id")
+    """Parse LLM output focusing on structured JSON Mode response."""
+    print(f"  [DEBUG] RAW MODEL OUTPUT:\n{raw}\n{'-'*40}")
     
-    valid_actions = {
-        "classify_email", "set_priority", "draft_reply", 
-        "mark_resolved", "escalate_email", "ignore_email"
-    }
-    
-    if action_type not in valid_actions:
-        return get_fallback_action(obs, email_id)
-        
-    if not email_id:
+    if not raw or "{" not in raw:
         return get_fallback_action(obs)
 
-    known_ids = {e.id for e in obs.emails}
-    if email_id not in known_ids:
-        return get_fallback_action(obs)
-
-    # Construct safe final action
     try:
+        # Try direct load first (ideal for JSON Mode)
+        try:
+            data = json.loads(raw.strip())
+        except json.JSONDecodeError:
+            # Simple single-pattern extraction if chatter persists
+            match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if not match: return get_fallback_action(obs)
+            data = json.loads(match.group(0))
+
+        if not isinstance(data, dict) or "action_type" not in data:
+            # Handle "action" hallucination
+            if "action" in data:
+                data["action_type"] = data.pop("action")
+            else:
+                return get_fallback_action(obs)
+            
+        action_type = data.get("action_type")
+        email_id = data.get("email_id")
+        
+        valid_actions = {
+            "classify_email", "set_priority", "draft_reply", 
+            "mark_resolved", "escalate_email", "ignore_email"
+        }
+        
+        if action_type not in valid_actions or not email_id:
+            return get_fallback_action(obs, email_id)
+
+        known_ids = {e.id for e in obs.emails}
+        if email_id not in known_ids:
+            return get_fallback_action(obs)
+
+        # Map possible hallucinated field names back to Pydantic Action model
+        cat = data.get("category")
+        if cat == "billing": cat = "billing_issue"
+        if cat == "urgent": cat = "urgent_complaint"
+        if cat == "general": cat = "general_inquiry"
+
         action = Action(
             action_type=action_type,
             email_id=email_id,
-            category=data.get("category"),
-            level=data.get("level"),
-            text=data.get("text"),
+            category=cat,
+            level=data.get("priority") or data.get("level") or data.get("priority_level"),
+            text=data.get("reply_text") or data.get("text") or data.get("reply")
         )
         return action
-    except Exception:
-        return get_fallback_action(obs, email_id)
+    except Exception as e:
+        print(f"  [Parse Error] {e}")
+        return get_fallback_action(obs)
 
 
 # ── Agent loop ────────────────────────────────────────────────────────────────
 
-def run_agent(client: OpenAI, task_id: str, verbose: bool = True) -> Dict[str, Any]:
+def run_agent(task_id: str, primary_healthy: bool = True, verbose: bool = True) -> Dict[str, Any]:
     """
     Run one full episode of the email triage agent.
 
@@ -260,83 +338,83 @@ def run_agent(client: OpenAI, task_id: str, verbose: bool = True) -> Dict[str, A
         print(f"  SHUBHAMOS — Task: {task_id.upper()} | {task_cls.email_count} emails | max {task_cls.max_steps} steps")
         print(f"{'='*60}")
 
-    # Conversation history (stateful across steps)
-    conversation: List[Dict[str, str]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-    ]
-
     total_reward = 0.0
-    invalid_count = 0
+    parse_success = 0
+    parse_failure = 0
+    failure_streak = 0
+    last_action_summary = ""
     step_times: List[float] = []
 
     for step in range(task_cls.max_steps):
-        if env._done:
+        # We use the obs from reset/step
+        
+        # STOP EARLY: All handled?
+        pending = [e for e in obs.emails if not (e.resolved or e.escalated or e.ignored)]
+        if not pending:
+            if verbose: print("  [Early Stop] All emails processed. Ending episode.")
             break
 
-        fallback_used = False
-        error_msg = "None"
-        reward = 0.0
-
-        # Build user message from current observation
-        user_msg = obs_to_prompt(obs)
-        conversation.append({"role": "user", "content": user_msg})
-
-        # Call LLM
-        t0 = time.time()
-        raw = call_llm(client, conversation)
-        step_times.append(time.time() - t0)
-
-        # Parse action (guaranteed to return valid Action via fallback)
-        action_before_fallback_check = raw
-        action = parse_action(raw, obs)
+        # TARGET SELECTION: Focus on the first pending email
+        target_email = pending[0]
         
-        # Determine if fallback logic activated
-        if not raw or raw.find("{") == -1 or getattr(action, "_is_fallback", False) or action.action_type not in raw:
-            fallback_used = True
-            error_msg = "LLM parse failure bounded to fallback"
+        # Build user message (Stateful & Focused)
+        user_msg = obs_to_prompt(obs, target_email.id, prev_action_result=last_action_summary)
+        
+        # FAST FAIL: If LLM is failing repeatedly, switch to pure fallback for this step
+        if failure_streak >= 2:
+            if verbose: print("  [Fast Fail] Consecutive failures. Reverting to Smart Fallback.")
+            action = get_fallback_action(obs, target_email.id)
+            setattr(action, "_is_fallback", True)
+            raw = "{}" # Dummy
+            failure_streak = 0 # reset streak after one fallback
+        else:
+            conversation = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg}
+            ]
+            t0 = time.time()
+            raw = call_llm(conversation, primary_healthy=primary_healthy)
+            step_times.append(time.time() - t0)
+            action = parse_action(raw, obs)
 
-        # Apply action inside strict try/except
+        # Trace failure for metrics & streak
+        is_llm_failure = not raw or raw == "{}" or getattr(action, "_is_fallback", False) or action.action_type not in raw
+        
+        if is_llm_failure:
+            parse_failure += 1
+            failure_streak += 1
+            if not getattr(action, "_is_fallback", False): # if parse failed but streak not yet triggered
+                 action = get_fallback_action(obs, target_email.id)
+        else:
+            parse_success += 1
+            failure_streak = 0
+
+        # Apply action
         try:
             obs, reward, done, info = env.step(action)
             total_reward += reward
+            last_action_summary = f"Success: {action.action_type} on {action.email_id}"
         except Exception as e:
-            error_msg = f"Env Step Exception: {str(e)}"
-            fallback_used = True
-            
-            # Inject ultimate override to prevent crash blocking
-            fallback_action = get_fallback_action(obs)
+            last_action_summary = f"Error: {str(e)[:50]}"
+            # One last try with fallback
             try:
-                obs, reward, done, info = env.step(fallback_action)
-                action = fallback_action
+                action = get_fallback_action(obs, target_email.id)
+                obs, reward, done, info = env.step(action)
                 total_reward += reward
-            except Exception as e_inner:
-                print(f"  [CRITICAL] Fallback failure at Step {step+1}: {e_inner}")
+            except Exception:
                 break
 
-        # Add assistant reply to conversation
-        conversation.append({"role": "assistant", "content": raw if raw else '{"action_type": "ignore_email"}'})
-
         if verbose:
-            print(f"\n[STEP {step+1:03d}]")
-            print(f"Action: {action.action_type} ({action.email_id})")
-            print(f"Reward: {reward:+.3f}")
-            print(f"Fallback: {'YES' if fallback_used else 'NO'}")
-            print(f"Error: {error_msg}")
+            print(f"  Step {step+1:02d} | Action: {action.action_type} | Reward: {reward:+.2f} | Fallback: {'Yes' if is_llm_failure else 'No'}")
 
-        if done:
-            break
+        if done: break
+        # obs is already updated by env.step()
+        time.sleep(2) # Key protection
 
-    # Guard envelope safely closing environment memory
-    try:
-        env.close()
-    except Exception:
-        pass
-
-    # Grade final state
+    # Final Output...
     final_state = env.state()
-    grader = GRADERS[task_id]()
-    report = grader.grade(final_state)
-
+    report = GRADERS[task_id]().grade(final_state)
+    
     if verbose:
         r = report
         print(f"\n{'='*60}")
@@ -348,6 +426,7 @@ def run_agent(client: OpenAI, task_id: str, verbose: bool = True) -> Dict[str, A
         print(f"  Resolution:     {r.resolution_rate:.3f}")
         print(f"  Urgent:         {r.urgent_handling:.3f}")
         print(f"  Steps used:     {r.steps_used}/{r.max_steps}")
+        print(f"  Parse Status:   Success: {parse_success} | Failure: {parse_failure}")
         print(f"  Total reward:   {total_reward:+.3f}")
         avg_ms = (sum(step_times) / len(step_times) * 1000) if step_times else 0
         print(f"  Avg LLM latency:{avg_ms:.0f}ms/step")
@@ -355,7 +434,6 @@ def run_agent(client: OpenAI, task_id: str, verbose: bool = True) -> Dict[str, A
 
     result = report.to_dict()
     result["total_reward"] = round(total_reward, 4)
-    result["invalid_actions"] = invalid_count
     return result
 
 
@@ -376,19 +454,21 @@ def main() -> None:
     parser.add_argument("--output", type=str, help="Write results JSON to this file")
     args = parser.parse_args()
 
-    if not HF_TOKEN:
-        print("ERROR: HF_TOKEN environment variable is required.")
-        print("  export HF_TOKEN=hf_your_token_here")
+    if not primary_client and not internal_client:
+        print("ERROR: No AI clients configured. Check your .env file.")
         sys.exit(1)
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    # Use the global clients initialized above
     verbose = not args.quiet
+    
+    # Step 1: Check AI Health (User's "Check then Use" request)
+    primary_healthy = check_client_health()
 
     tasks_to_run = ["easy", "medium", "hard"] if args.task == "all" else [args.task]
     all_results: Dict[str, Any] = {}
 
     for task_id in tasks_to_run:
-        result = run_agent(client, task_id, verbose=verbose)
+        result = run_agent(task_id, primary_healthy=primary_healthy, verbose=verbose)
         all_results[task_id] = result
 
     # Print exact required output formats for final scores

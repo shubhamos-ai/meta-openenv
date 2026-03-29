@@ -1,46 +1,30 @@
-# ── Base image ────────────────────────────────────────────────────────────────
-FROM python:3.11-slim
+# Use Python 3.10-slim as base image for stability and smaller footprint
+FROM python:3.10-slim
 
-# ── Metadata ──────────────────────────────────────────────────────────────────
-LABEL maintainer="Shubhamos Team"
-LABEL description="SHUBHAMOS: AI Email Operations & Triage Environment (OpenEnv)"
-LABEL version="1.0.0"
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# ── System deps ───────────────────────────────────────────────────────────────
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# ── Working directory ─────────────────────────────────────────────────────────
+# Set working directory to /app
 WORKDIR /app
 
-# ── Install Python dependencies (cached layer) ────────────────────────────────
+# Install system dependencies if needed (none strictly required for this specific task)
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     curl \
+#     && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file first to leverage Docker cache
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# ── Copy project files ────────────────────────────────────────────────────────
-COPY models.py .
-COPY environment.py .
-COPY reward.py .
-COPY server.py .
-COPY inference.py .
-COPY openenv.yaml .
-COPY tasks/ ./tasks/
-COPY graders/ ./graders/
-COPY dashboard/ ./dashboard/
+# Upgrade pip and install dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# ── Health check ──────────────────────────────────────────────────────────────
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:7860/health || exit 1
+# Copy all project files into the container
+COPY . .
 
-# ── Runtime env vars ──────────────────────────────────────────────────────────
-ENV PORT=7860
-ENV API_BASE_URL=https://router.huggingface.co/v1
-ENV MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
-# HF_TOKEN must be injected at runtime — never bake tokens into images
-
-# ── Expose port (Hugging Face Spaces default) ─────────────────────────────────
+# Expose the port used by Hugging Face Spaces (and our FastAPI server)
 EXPOSE 7860
 
-# ── Start server ──────────────────────────────────────────────────────────────
+# Run the FastAPI server using uvicorn
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7860"]
