@@ -1,4 +1,14 @@
-<<<<<<< HEAD
+---
+title: SHUBHAMOS - AI Email Triage Environment
+emoji: 📈
+colorFrom: blue
+colorTo: gray
+sdk: docker
+pinned: false
+license: mit
+short_description: OpenEnv AI email triage environment for agent learning
+---
+
 # SHUBHAMOS: AI Email Operations & Triage Environment
 
 [![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-1.0.0-blue.svg)](https://github.com/openenv/spec)
@@ -183,17 +193,3 @@ SHUBHAMOS is designed for **Reward-Driven Optimization**. The dense rewards allo
 
 ## 📜 License
 This project is licensed under the MIT License - see the LICENSE file for details.
-=======
----
-title: Meta Pytorch Hackathon
-emoji: 📈
-colorFrom: blue
-colorTo: gray
-sdk: docker
-pinned: false
-license: mit
-short_description: OpenEnv AI email triage environment for agent learning
----
-
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
->>>>>>> 347c34d3d3c5c13347ca742d45eb2612468a917e
