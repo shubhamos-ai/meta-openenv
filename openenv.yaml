@@ -1,0 +1,126 @@
+name: SHUBHAMOS
+version: "1.0.0"
+description: >
+  AI Email Operations & Triage Environment — a production-grade OpenEnv environment
+  simulating real-world email inbox management. AI agents classify, prioritize,
+  respond to, and resolve emails across three difficulty tiers.
+author: Shubhamos Team
+homepage: https://huggingface.co/spaces/shubhamos/email-openenv
+task_count: 3
+
+# ── Action Space ───────────────────────────────────────────────────────────────
+action_space:
+  type: discrete_structured
+  description: >
+    Structured actions dispatched by action_type. Each action targets a specific
+    email by ID and carries optional payload fields.
+  actions:
+    - name: classify_email
+      fields: [email_id, category]
+      description: Assign a category to an email (spam/general_inquiry/billing_issue/urgent_complaint)
+    - name: set_priority
+      fields: [email_id, level]
+      description: Set priority level for an email (low/medium/high)
+    - name: draft_reply
+      fields: [email_id, text]
+      description: Draft a reply text to an email (required before mark_resolved on some tasks)
+    - name: mark_resolved
+      fields: [email_id]
+      description: Mark an email as fully resolved
+    - name: escalate_email
+      fields: [email_id]
+      description: Escalate email to human operator
+    - name: ignore_email
+      fields: [email_id]
+      description: Intentionally skip an email (penalized if urgent)
+
+# ── Observation Space ──────────────────────────────────────────────────────────
+observation_space:
+  type: structured
+  description: >
+    Structured observation returned after each step and reset. Agent sees
+    all emails with metadata but NOT ground truth labels.
+  fields:
+    - name: emails
+      type: List[ObservationEmail]
+      description: Inbox state — each email has id, subject, sender, sentiment, body_preview (200 chars), agent-assigned category/priority, status flags
+    - name: total_emails
+      type: int
+      description: Total emails in this episode
+    - name: pending_count
+      type: int
+      description: Emails not yet terminally acted on
+    - name: resolved_count
+      type: int
+      description: Emails marked resolved
+    - name: escalated_count
+      type: int
+      description: Emails escalated
+    - name: step_count
+      type: int
+      description: Steps elapsed so far
+    - name: max_steps
+      type: int
+      description: Maximum allowed steps before forced termination
+    - name: elapsed_ratio
+      type: float
+      description: step_count / max_steps (0.0 to 1.0)
+
+# ── Reward ─────────────────────────────────────────────────────────────────────
+reward_range:
+  low: -100.0
+  high: 100.0
+reward_description: >
+  Dense reward signal. Positive: correct classification (+0.3), correct priority (+0.3),
+  resolved email (+0.5), urgent email resolved early (+0.4 bonus). Negative: wrong
+  classification (-0.2), wrong priority (-0.2), ignoring urgent (-0.5), step delay (-0.01).
+
+# ── Tasks ──────────────────────────────────────────────────────────────────────
+tasks:
+  - id: easy
+    name: Basic Inbox
+    difficulty: easy
+    description: >
+      5-8 emails with clear, unambiguous categories. Minimal noise.
+      Good starting point for agent calibration.
+    seed: 42
+    email_count: 8
+    max_steps: 50
+    expected_categories: [spam, general_inquiry, billing_issue, urgent_complaint]
+
+  - id: medium
+    name: Support Queue
+    difficulty: medium
+    description: >
+      15-25 emails with mixed priorities and categories. Agent must sequence
+      actions effectively and handle urgency.
+    seed: 123
+    email_count: 20
+    max_steps: 120
+
+  - id: hard
+    name: Enterprise Inbox
+    difficulty: hard
+    description: >
+      40-60 emails with high ambiguity, spam noise, urgent complaints,
+      and billing issues. Requires prioritization under pressure.
+    seed: 999
+    email_count: 50
+    max_steps: 300
+
+# ── Endpoints (HTTP API) ───────────────────────────────────────────────────────
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+  health: GET /health
+
+# ── Grading Formula ────────────────────────────────────────────────────────────
+grading:
+  formula: >
+    score = classification_accuracy * 0.3
+          + priority_accuracy * 0.3
+          + resolution_rate * 0.3
+          + urgent_handling_score * 0.1
+  range: [0.0, 1.0]
+  deterministic: true
