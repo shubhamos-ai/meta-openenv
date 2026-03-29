@@ -29,7 +29,11 @@ A production-grade OpenEnv-compatible environment that simulates real-world emai
 ### Active
 
 <!-- Current scope. Building toward these. -->
-(Pending v1.1 requirements from `/gsd-new-milestone`)
+- [ ] Implement robust LLM output JSON parser (strip markdown, fallback action).
+- [ ] Add API resiliency layer (retry, exponential backoff, timeouts).
+- [ ] Add max step guard and exception handling to `inference.py`.
+- [ ] Run full E2E evaluation on easy/medium tasks and log scores.
+- [ ] Push codebase to Hugging Face Spaces and verify live deployment.
 
 ### Out of Scope
 
