@@ -1,3 +1,16 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-03-29T11:40:18.791Z"
+progress:
+  total_phases: 6
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+---
+
 # STATE.md — SHUBHAMOS Project
 
 ## Project Reference
@@ -5,14 +18,14 @@
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** AI agents can be meaningfully evaluated on real-world email operations via dense reward signals, deterministic grading, and reproducible scores across easy/medium/hard difficulty tiers.
-**Current focus:** Phase 1 — Core Environment & Models
+**Current focus:** Phase 01 — core-environment-models
 
 ---
 
 ## Current Status
 
 **Milestone:** v1.0 — Hackathon Submission
-**Phase:** 1 of 6
+**Phase:** 2 of 6 (action space & reward engine)
 **Phase status:** Not started
 
 ---
@@ -35,6 +48,7 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 Project is freshly initialized. No code exists yet.
 
 **Priority order:**
+
 1. OpenEnv environment (step/reset/state)
 2. Typed Pydantic models
 3. Reward function
@@ -46,6 +60,7 @@ Project is freshly initialized. No code exists yet.
 9. Lightweight dashboard
 
 **Key constraints:**
+
 - Use OpenAI SDK with `base_url=API_BASE_URL` pointing to HF Router
 - MODEL_NAME = Qwen/Qwen2.5-72B-Instruct
 - Fixed seeds for reproducibility
