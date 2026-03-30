@@ -222,14 +222,14 @@ def call_llm(conversation: List[Dict[str, str]], primary_healthy: bool = True, c
             else:
                 print(f"  [Primary Error] {str(e)[:100]}")
 
-    # ── TIER 2: Internal AI Fallback (Secret) ───────────────────────────────────
+    # ── TIER 2: Secondary AI Fallback (Secret) ───────────────────────────────────
     if i_client:
         try:
             content = _safe_llm_call(i_client, internal_model, conversation, timeout=20)
             if content:
                 return content.strip()
         except Exception as e:
-            print(f"  [Internal Error] {str(e)[:80]}")
+            print(f"  [Fallback Error] {str(e)[:80]}")
 
     # ── TIER 3: Desperation Primary (even if failed health) ──────────────────
     # Only try this if we haven't already tried it in Tier 1

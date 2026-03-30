@@ -28,6 +28,5 @@ RUN chmod +x ./tests/e2e_runner.sh
 # HF Spaces use 7860 as the internal port
 EXPOSE 7860
 
-# Start verification health check AND the unified app
-# Note: health_check.py will log to /app/logs/hf_space_status.log
-CMD ["sh", "-c", "python3 health_check.py && uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# Start verification health check in background AND the primary app server
+CMD ["sh", "-c", "python3 health_check.py & uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}"]

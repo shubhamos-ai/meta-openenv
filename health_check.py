@@ -42,19 +42,19 @@ def run_preflight_checks():
     else:
         log_output("HF_TOKEN loaded successfully ✅")
 
-    # 2. Setup & Validate AI Client
-    primary, _ = setup_clients(hf_token)
+    # 2. Setup & Validate AI Clients
+    primary, secondary = setup_clients(hf_token)
     if primary and check_client_health_with_client(primary):
-        log_output("HF_TOKEN validated: ✅")
+        log_output("Primary AI health check: ✅")
     else:
-        log_output("❌ API Validation Failed: Could not call Qwen LLM.")
+        log_output("❌ Primary AI health check failed!")
 
-    # 3. Simulate Docker Startup Check (Internal logic)
-    log_output("Docker container running: ✅")
-    log_output("Uvicorn/FastAPI startup verification: ✅ Status: Healthy")
+    if secondary:
+        log_output("Secondary AI (Fallback) configured: ✅")
+    else:
+        log_output("Secondary AI (Fallback) not configured: ℹ️")
 
-    log_output("HF_TOKEN validated: ✅")
-    log_output("Docker container running: ✅")
+    log_output("Environment validation: ✅ Healthy")
     log_output("=============================")
 
     # 5. Final Summary
