@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 # Load local .env if exists (for local testing)
 load_dotenv()
 
+# Add project root to path for inference import
+sys.path.append(str(Path(__file__).parent.parent))
 from inference import setup_clients, run_agent, check_client_health_with_client
 
 # ── LOGGING SETUP ─────────────────────────────────────────────────────────────

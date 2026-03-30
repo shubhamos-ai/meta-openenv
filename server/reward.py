@@ -24,7 +24,7 @@ Reward design:
 from __future__ import annotations
 from typing import List, Optional
 
-from models import Action, Email
+from .models import Action, Email
 
 
 class RewardEngine:

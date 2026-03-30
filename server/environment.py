@@ -13,7 +13,7 @@ import random
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from models import (
+from .models import (
     Action,
     ActionType,
     Email,

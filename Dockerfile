@@ -25,8 +25,12 @@ COPY . .
 # Ensure test scripts are executable
 RUN chmod +x ./tests/e2e_runner.sh
 
+# Meta OpenEnv Requirement: Install the package in editable mode
+# This registers the [project.scripts] and installs openenv dependencies.
+RUN pip install --no-cache-dir -e .
+
 # HF Spaces use 7860 as the internal port
 EXPOSE 7860
 
-# Start verification health check in background AND the primary app server
-CMD ["sh", "-c", "python3 health_check.py & uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# Start verification health check in background AND the OpenEnv 'server' command
+CMD ["sh", "-c", "python3 server/health_check.py & server"]

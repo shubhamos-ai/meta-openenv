@@ -2,7 +2,7 @@ import gradio as gr
 import os
 import json
 import pandas as pd
-from server import app as fastapi_app
+from .server import app as fastapi_app
 from inference import run_agent, TASKS
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -88,8 +88,12 @@ with gr.Blocks(title="SHUBHAMOS: AI Email Triage Benchmarking") as demo:
 # Combine FastAPI and Gradio
 app = gr.mount_gradio_app(fastapi_app, demo, path="/")
 
-if __name__ == "__main__":
+def start_server():
+    """CLI entry point for the OpenEnv 'server' command."""
     import uvicorn
     port = int(os.environ.get("PORT", 7860))
-    # We run 'app' (the mounted version) instead of 'fastapi_app'
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # Note: Use string import to avoid bootstrap issues
+    uvicorn.run("server.app:app", host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    start_server()

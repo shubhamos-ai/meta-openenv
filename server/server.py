@@ -28,11 +28,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel as PydanticBaseModel
 
-from environment import EmailTriageEnv
-from models import Action
-from reward import RewardEngine
-from tasks import TASKS
-from graders import EasyGrader, MediumGrader, HardGrader
+from .environment import EmailTriageEnv
+from .models import Action
+from .reward import RewardEngine
+from .tasks import TASKS
+from .graders import EasyGrader, MediumGrader, HardGrader
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
@@ -231,7 +231,5 @@ def _obs_to_json(obs) -> Dict[str, Any]:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 7860))
-    print(f"Starting SHUBHAMOS server on port {port}...")
-    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
+    from .app import start_server
+    start_server()
