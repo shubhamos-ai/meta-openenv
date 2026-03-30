@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shubhamos-email-triage"
+version = "1.0.0"
+description = "A production-grade OpenEnv-compliant environment for AI email triage."
+authors = [
+    { name = "SHUBHAMOS AI", email = "support@shubhamos.ai" }
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "gradio>=4.0.0",
+    "pydantic>=2.0.0",
+    "openai",
+    "pyyaml",
+    "pandas",
+    "numpy==1.26.4",
+    "python-dotenv"
+]
+requires-python = ">=3.10"
+
+[tool.setuptools]
+py-modules = ["environment", "models", "reward", "inference", "server", "app", "health_check"]

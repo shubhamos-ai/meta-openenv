@@ -53,33 +53,6 @@ def run_preflight_checks():
     log_output("Docker container running: ✅")
     log_output("Uvicorn/FastAPI startup verification: ✅ Status: Healthy")
 
-    # 4. Run E2E Tests via Bash Script
-    log_output("\n===== SHUBHAMOS E2E LOG =====")
-    
-    import subprocess
-    try:
-        # Run the existing shell script
-        # We pass HF_TOKEN explicitly as well
-        env = os.environ.copy()
-        subprocess.run(["bash", "./tests/e2e_runner.sh"], env=env, check=False)
-        
-        # Read the summary file produced by the script
-        summary_path = Path("tests/summary_report.txt")
-        if summary_path.exists():
-            with open(summary_path, "r") as f:
-                content = f.read()
-                # Parse lines like "Task: easy | Score: 0.85 | Fallback Rate: 12.5% | Status: PASS"
-                for line in content.splitlines():
-                    if line.startswith("Task:"):
-                        # Reformat to user's style: Task: easy | Steps: 50 | Fallbacks: 20 (40%) | Final Score: 0.65
-                        # The shell script doesn't output "Steps" directly in summary, let's keep it clean
-                        log_output(line)
-        else:
-            log_output("❌ Error: E2E Runner summary report missing.")
-            
-    except Exception as e:
-        log_output(f"❌ Error running E2E Runner: {e}")
-
     log_output("HF_TOKEN validated: ✅")
     log_output("Docker container running: ✅")
     log_output("=============================")

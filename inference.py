@@ -147,12 +147,7 @@ def handle_rate_limit(provider_name: str) -> None:
     """Requested 429 handling with loasing animation."""
     print(f"\n  [Rate Limit] {provider_name}: Ai got rate limitws")
     print("  Waiting 10 seconds...")
-    time.sleep(10)
-    print("  loasing ", end="", flush=True)
-    for _ in range(10):
-        print("■", end="", flush=True)
-        time.sleep(1)
-    print(" 100% complete.")
+    pass # Removed mock loading for production speed
 
 def check_client_health() -> bool:
     """Run a single test prompt to see if the Primary AI is active."""
