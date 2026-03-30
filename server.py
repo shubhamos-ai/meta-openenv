@@ -193,7 +193,16 @@ async def openenv_yaml():
 
 DASHBOARD_DIR = Path(__file__).parent / "dashboard"
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
+async def root_health():
+    """Root health check for Hugging Face Spaces."""
+    return {
+        "status": "ok",
+        "message": "SHUBHAMOS is running 🚀"
+    }
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
     """Serve the minimal monitoring dashboard."""
     html_path = DASHBOARD_DIR / "index.html"
