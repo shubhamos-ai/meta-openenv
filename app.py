@@ -75,7 +75,7 @@ with gr.Blocks(title="SHUBHAMOS: AI Email Triage Benchmarking") as demo:
 
         with gr.Column(scale=2):
             result_summary = gr.Markdown("### Results will appear here...")
-            result_table = gr.Table(label="Performance Metrics")
+            result_table = gr.Dataframe(label="Performance Metrics")
 
     run_btn.click(
         fn=run_benchmark_ui,

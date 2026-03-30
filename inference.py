@@ -209,46 +209,43 @@ def call_llm(conversation: List[Dict[str, str]], primary_healthy: bool = True, c
     JSON Mode enforcement included.
     """
     p_client, i_client = clients
-    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-    i_model = os.environ.get("INTERNAL_AI_MODEL", "qwen/qwen3.5-122b-a10b")
+    primary_model = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    internal_model = os.environ.get("INTERNAL_AI_MODEL", "qwen/qwen3.5-122b-a10b")
 
     # ── TIER 1: Primary AI if healthy ──────────────────────────────────
     if p_client and primary_healthy:
         try:
-            content = _safe_llm_call(p_client, model_name, conversation, timeout=20)
+            content = _safe_llm_call(p_client, primary_model, conversation, timeout=15)
             if content:
-                time.sleep(2) # Normal throttle
+                time.sleep(1) # Fast throttle for success
                 return content.strip()
         except Exception as e:
             if "429" in str(e):
                 handle_rate_limit("Primary AI")
+            elif "402" in str(e):
+                print("  [Primary Error] Credits depleted (402). Switching to Fallback.")
             else:
                 print(f"  [Primary Error] {str(e)[:100]}")
 
     # ── TIER 2: Internal AI Fallback (Secret) ───────────────────────────────────
     if i_client:
         try:
-            content = _safe_llm_call(i_client, i_model, conversation, timeout=20)
+            content = _safe_llm_call(i_client, internal_model, conversation, timeout=20)
             if content:
-                time.sleep(2)
                 return content.strip()
         except Exception as e:
-            if "429" in str(e):
-                handle_rate_limit("Internal AI")
-            else:
-                print(f"  [Internal Error] AI Error: {str(e)[:80]}")
+            print(f"  [Internal Error] {str(e)[:80]}")
 
     # ── TIER 3: Desperation Primary (even if failed health) ──────────────────
+    # Only try this if we haven't already tried it in Tier 1
     if p_client and not primary_healthy:
-        print(f"  [Retry] Trying Primary AI despite previous health failure...")
         try:
-            content = _safe_llm_call(p_client, model_name, conversation, timeout=25)
+            content = _safe_llm_call(p_client, primary_model, conversation, timeout=25)
             if content:
                 return content.strip()
         except Exception:
             pass
 
-    print("  [API Fatal] All configured AI providers failed.")
     return ""
 
 def get_fallback_action(obs: Observation, email_id: Optional[str] = None) -> Action:
