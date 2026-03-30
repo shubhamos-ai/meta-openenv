@@ -36,19 +36,44 @@ from reward import RewardEngine
 from tasks import TASKS
 from graders import EasyGrader, MediumGrader, HardGrader
 
-# ── Configuration (Loaded via .env) ───────────────────────────────────────────
+# ── AI Client Setup ──────────────────────────────────────────────────────────
+
+# Load default config from environment
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
-# ── Internal AI Configuration (Secret Fallback) ──────────────────────────────
-INTERNAL_BASE_URL = os.environ.get("INTERNAL_AI_URL", "https://integrate.api.nvidia.com/v1")
-INTERNAL_MODEL = os.environ.get("INTERNAL_AI_MODEL", "qwen/qwen3.5-122b-a10b")
-INTERNAL_KEY = os.environ.get("INTERNAL_AI_KEY", "")
+# Global storage for clients to avoid re-initializing if token hasn't changed.
+_primary_client = None
+_internal_client = None
+_current_token = None
 
-# Global clients
-primary_client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN, max_retries=0) if HF_TOKEN else None
-internal_client = OpenAI(base_url=INTERNAL_BASE_URL, api_key=INTERNAL_KEY, max_retries=0) if INTERNAL_KEY else None
+def setup_clients(hf_token: Optional[str] = None):
+    """Initializes or updates the OpenAI clients with a specific token."""
+    global _primary_client, _internal_client, _current_token
+    token = hf_token or HF_TOKEN
+    
+    if not token:
+        print("  [Setup Error] No HF_TOKEN provided.")
+        return None, None
+        
+    if _primary_client and _current_token == token:
+        return _primary_client, _internal_client
+        
+    _current_token = token
+    base_url = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    
+    _primary_client = OpenAI(base_url=base_url, api_key=token, max_retries=0)
+    
+    # Internal AI Fallback
+    internal_url = os.environ.get("INTERNAL_AI_URL", "https://integrate.api.nvidia.com/v1")
+    internal_model = os.environ.get("INTERNAL_AI_MODEL", "qwen/qwen3.5-122b-a10b")
+    internal_key = os.environ.get("INTERNAL_AI_KEY", "")
+    
+    _internal_client = OpenAI(base_url=internal_url, api_key=internal_key, max_retries=0) if internal_key else None
+    
+    return _primary_client, _internal_client
 
 GRADERS = {
     "easy": EasyGrader,
@@ -178,15 +203,19 @@ def _safe_llm_call(client, model, messages, timeout=20):
              return response.choices[0].message.content
         raise e
 
-def call_llm(conversation: List[Dict[str, str]], primary_healthy: bool = True) -> str:
+def call_llm(conversation: List[Dict[str, str]], primary_healthy: bool = True, clients: tuple = (None, None)) -> str:
     """
     Call the LLM with three-tier logic: Primary AI -> Experimental AI (Fallback).
     JSON Mode enforcement included.
     """
+    p_client, i_client = clients
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    i_model = os.environ.get("INTERNAL_AI_MODEL", "qwen/qwen3.5-122b-a10b")
+
     # ── TIER 1: Primary AI if healthy ──────────────────────────────────
-    if primary_client and primary_healthy:
+    if p_client and primary_healthy:
         try:
-            content = _safe_llm_call(primary_client, MODEL_NAME, conversation, timeout=20)
+            content = _safe_llm_call(p_client, model_name, conversation, timeout=20)
             if content:
                 time.sleep(2) # Normal throttle
                 return content.strip()
@@ -197,9 +226,9 @@ def call_llm(conversation: List[Dict[str, str]], primary_healthy: bool = True) -
                 print(f"  [Primary Error] {str(e)[:100]}")
 
     # ── TIER 2: Internal AI Fallback (Secret) ───────────────────────────────────
-    if internal_client:
+    if i_client:
         try:
-            content = _safe_llm_call(internal_client, INTERNAL_MODEL, conversation, timeout=20)
+            content = _safe_llm_call(i_client, i_model, conversation, timeout=20)
             if content:
                 time.sleep(2)
                 return content.strip()
@@ -210,10 +239,10 @@ def call_llm(conversation: List[Dict[str, str]], primary_healthy: bool = True) -
                 print(f"  [Internal Error] AI Error: {str(e)[:80]}")
 
     # ── TIER 3: Desperation Primary (even if failed health) ──────────────────
-    if primary_client and not primary_healthy:
+    if p_client and not primary_healthy:
         print(f"  [Retry] Trying Primary AI despite previous health failure...")
         try:
-            content = _safe_llm_call(primary_client, MODEL_NAME, conversation, timeout=25)
+            content = _safe_llm_call(p_client, model_name, conversation, timeout=25)
             if content:
                 return content.strip()
         except Exception:
@@ -317,12 +346,21 @@ def parse_action(raw: str, obs: Observation) -> Action:
 
 # ── Agent loop ────────────────────────────────────────────────────────────────
 
-def run_agent(task_id: str, primary_healthy: bool = True, verbose: bool = True) -> Dict[str, Any]:
+def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True) -> Dict[str, Any]:
     """
     Run one full episode of the email triage agent.
 
     Returns: grading report dict
     """
+    clients = setup_clients(hf_token)
+    p_client, i_client = clients
+    
+    if not p_client:
+        return {"error": "AI client not initialized. Check HF_TOKEN."}
+
+    # Step: Check AI Health (User's "Check then Use" request)
+    primary_healthy = check_client_health_with_client(p_client)
+
     task_cls = TASKS[task_id]
     task_config = task_cls.config()
 
@@ -346,8 +384,6 @@ def run_agent(task_id: str, primary_healthy: bool = True, verbose: bool = True) 
     step_times: List[float] = []
 
     for step in range(task_cls.max_steps):
-        # We use the obs from reset/step
-        
         # STOP EARLY: All handled?
         pending = [e for e in obs.emails if not (e.resolved or e.escalated or e.ignored)]
         if not pending:
@@ -373,7 +409,7 @@ def run_agent(task_id: str, primary_healthy: bool = True, verbose: bool = True) 
                 {"role": "user", "content": user_msg}
             ]
             t0 = time.time()
-            raw = call_llm(conversation, primary_healthy=primary_healthy)
+            raw = call_llm(conversation, primary_healthy=primary_healthy, clients=clients)
             step_times.append(time.time() - t0)
             action = parse_action(raw, obs)
 
@@ -408,33 +444,36 @@ def run_agent(task_id: str, primary_healthy: bool = True, verbose: bool = True) 
             print(f"  Step {step+1:02d} | Action: {action.action_type} | Reward: {reward:+.2f} | Fallback: {'Yes' if is_llm_failure else 'No'}")
 
         if done: break
-        # obs is already updated by env.step()
         time.sleep(2) # Key protection
 
     # Final Output...
     final_state = env.state()
     report = GRADERS[task_id]().grade(final_state)
     
-    if verbose:
-        r = report
-        print(f"\n{'='*60}")
-        print(f"  GRADE REPORT — {task_id.upper()}")
-        print(f"{'='*60}")
-        print(f"  Final score:   {r.final_score:.3f} {'✓ PASS' if r.passed else '✗ FAIL'}")
-        print(f"  Classification: {r.classification_accuracy:.3f}")
-        print(f"  Priority:       {r.priority_accuracy:.3f}")
-        print(f"  Resolution:     {r.resolution_rate:.3f}")
-        print(f"  Urgent:         {r.urgent_handling:.3f}")
-        print(f"  Steps used:     {r.steps_used}/{r.max_steps}")
-        print(f"  Parse Status:   Success: {parse_success} | Failure: {parse_failure}")
-        print(f"  Total reward:   {total_reward:+.3f}")
-        avg_ms = (sum(step_times) / len(step_times) * 1000) if step_times else 0
-        print(f"  Avg LLM latency:{avg_ms:.0f}ms/step")
-        print(f"{'='*60}")
-
     result = report.to_dict()
     result["total_reward"] = round(total_reward, 4)
     return result
+
+def check_client_health_with_client(client) -> bool:
+    """Run a single test prompt to see if the client is active."""
+    if not client: return False
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    print(f"  [Health Check] Testing AI ({model_name}) with JSON Mode...")
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": "Respond with {'status': 'ok'} in JSON format."}],
+            max_tokens=20,
+            timeout=10,
+            response_format={"type": "json_object"}
+        )
+        if response.choices[0].message.content:
+            print("  [Health Check] Provider is HEALTHY ✅")
+            return True
+    except Exception as e:
+        print(f"  [Health Check] AI failed: {str(e)[:80]} ❌")
+        return False
+    return False
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -461,14 +500,11 @@ def main() -> None:
     # Use the global clients initialized above
     verbose = not args.quiet
     
-    # Step 1: Check AI Health (User's "Check then Use" request)
-    primary_healthy = check_client_health()
-
     tasks_to_run = ["easy", "medium", "hard"] if args.task == "all" else [args.task]
     all_results: Dict[str, Any] = {}
 
     for task_id in tasks_to_run:
-        result = run_agent(task_id, primary_healthy=primary_healthy, verbose=verbose)
+        result = run_agent(task_id, hf_token=None, verbose=verbose)
         all_results[task_id] = result
 
     # Print exact required output formats for final scores

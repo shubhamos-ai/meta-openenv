@@ -42,6 +42,27 @@ SHUBHAMOS simulates a dynamic email inbox environment. The environment lifecycle
 
 ---
 
+## 🚀 Quick Start (via Hugging Face Space)
+
+You can run agent benchmarks directly from your browser:
+1.  Navigate to your deployed **Hugging Face Space**.
+2.  In the `Hugging Face Token` field, paste your **HF API Token** (needed to call the Qwen router).
+3.  Choose a **Task** (easy | medium | hard).
+4.  Click **Run Agent Benchmark 🚀**.
+5.  View live results and grading metrics.
+
+---
+
+## 🛠️ API & SDK Integration
+
+For programmatic environment access (training, RL loops), use the standard endpoints:
+- `POST /reset`: Start an episode.
+- `POST /step`: Apply an action.
+- `GET /state`: Deep state inspection (for grading).
+- `GET /grade`: Re-calculate results for the current episode.
+
+---
+
 ## ⚙️ OpenEnv Specification
 
 ### 📥 Observation Model

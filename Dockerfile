@@ -1,22 +1,27 @@
 FROM python:3.10-slim
 
+# Force unbuffered output for real-time logs on HF
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-# Final trigger to ensure logs start streaming
-RUN echo "Starting build for SHUBHAMOS meta-pytorch-hackathon"
-
-# Install absolute bare minimum first
+# Install build dependencies for C-extensions (like uvicorn/httpcore)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy requirements FIRST to leverage Docker layer caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
+# Copy project files
 COPY . .
 
-# Expose port (default 7860)
+# HF Spaces use 7860 as the internal port
 EXPOSE 7860
 
-# Simple startup
-CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# Start unified app (FastAPI + Gradio)
+# Note: we use app.py as the entry point
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}"]
