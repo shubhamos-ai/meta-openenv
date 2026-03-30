@@ -1,10 +1,18 @@
+import sys
+from pathlib import Path
+
+# Add project root to path so we can import root scripts like inference.py
+ROOT_DIR = Path(__file__).parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.append(str(ROOT_DIR))
+
 import gradio as gr
 import os
 import json
 import pandas as pd
 from .server import app as fastapi_app
 from .tasks import TASKS
-from inference import run_agent
+# Note: inference is imported lazily below to ensure sys.path is updated
 from fastapi.middleware.cors import CORSMiddleware
 
 # ── Gradio Logic ──────────────────────────────────────────────────────────────
@@ -20,6 +28,9 @@ def run_benchmark_ui(hf_token, task_id):
     try:
         # Set token in environment for backend stability
         os.environ["HF_TOKEN"] = hf_token
+        
+        # Lazy import of inference to avoid boot-time path issues
+        from inference import run_agent
         
         # Run agent
         result = run_agent(task_id, hf_token=hf_token, verbose=False)
