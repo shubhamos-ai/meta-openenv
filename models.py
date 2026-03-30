@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 # ── Type Aliases ───────────────────────────────────────────────────────────────
 
-EmailCategory = Literal["spam", "general_inquiry", "billing_issue", "urgent_complaint"]
+EmailCategory = Literal["spam", "general_inquiry", "billing_issue", "urgent_complaint", "tech_support"]
 Priority = Literal["low", "medium", "high", "unknown"]
 Sentiment = Literal["positive", "neutral", "negative"]
 ActionType = Literal[

@@ -322,17 +322,31 @@ def parse_action(raw: str, obs: Observation) -> Action:
         if email_id not in known_ids:
             return get_fallback_action(obs)
 
-        # Map possible hallucinated field names back to Pydantic Action model
+        # Normalization for Category
         cat = data.get("category")
-        if cat == "billing": cat = "billing_issue"
-        if cat == "urgent": cat = "urgent_complaint"
-        if cat == "general": cat = "general_inquiry"
+        if cat:
+            cat = str(cat).lower()
+            if "bill" in cat: cat = "billing_issue"
+            elif "urgent" in cat or "complaint" in cat: cat = "urgent_complaint"
+            elif "tech" in cat or "support" in cat: cat = "tech_support"
+            elif "general" in cat: cat = "general_inquiry"
+            elif "spam" in cat: cat = "spam"
+            else: cat = "general_inquiry" # fallback safe
+
+        # Normalization for Priority Level
+        level = data.get("priority") or data.get("level") or data.get("priority_level")
+        if level:
+            level = str(level).lower()
+            if "high" in level or "urgent" in level or "critical" in level: level = "high"
+            elif "med" in level: level = "medium"
+            elif "low" in level: level = "low"
+            else: level = "unknown"
 
         action = Action(
             action_type=action_type,
             email_id=email_id,
             category=cat,
-            level=data.get("priority") or data.get("level") or data.get("priority_level"),
+            level=level,
             text=data.get("reply_text") or data.get("text") or data.get("reply")
         )
         return action
