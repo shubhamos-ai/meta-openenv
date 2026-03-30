@@ -16,19 +16,36 @@ short_description: OpenEnv AI email triage environment for agent learning
 
 **SHUBHAMOS** is a production-grade [OpenEnv](https://github.com/openenv/spec)-compliant environment (developed by **Meta Research**) designed for the **Meta PyTorch Hackathon**. It evaluates and trains AI agents on real-world email triage tasks, providing high-density reward signals and deterministic grading for operational AI agents.
 
-Built for high-density reward signals and deterministic grading, SHUBHAMOS provides a rigorous benchmark for operational AI agents.
+---
+
+## 🖼️ Architecture Overview
+
+```mermaid
+graph TD
+    A[Gradio Dashboard] -->|User Trigger| B[Inference Engine]
+    B -->|Action| C[EmailTriageEnv]
+    C -->|Observation| B
+    B -->|Step Logic| D{AI Router}
+    D -->|Tier 1| E[Qwen-72B Primary]
+    D -->|Tier 2| F[NVIDIA Fallback]
+    D -->|Tier 3| G[Smart Heuristics]
+    C -->|State| H[Deterministic Grader]
+    H -->|Final Score| A
+```
 
 ---
 
-## 🚀 Overview
+## 🛠️ Key Systems
 
-Email triage is a classic "deceptively simple" task that remains a bottleneck for enterprise productivity. It requires:
-*   **Semantic Understanding:** Identifying the core intent of an email.
-*   **Prioritization:** Distinguishing between a billing dispute (high priority) and a standard inquiry (low priority).
-*   **Consistency:** Applying the same triage logic across thousands of items.
-*   **Urgency Handling:** Responding rapidly to critical complaints to minimize SLA breaches.
+> [!IMPORTANT]
+> **SHUBHAMOS** implements a rigid three-tier inference safety loop to ensure zero-downtime benchmarking even during API outages.
 
-SHUBHAMOS provides the infrastructure to simulate these workflows at scale, allowing agents to be trained and evaluated on their ability to manage complex operations autonomously.
+| Feature | Description |
+| :--- | :--- |
+| **OpenEnv Core** | Full compliance with the OpenEnv v1.0 specification. |
+| **Dense Rewards** | Shaped reward signals optimized for RL training and tuning. |
+| **Gradio GUI** | Instant interactive benchmarking without writing code. |
+| **Multi-AI Switch** | Automatic failover between primary cloud and secret internal AI. |
 
 ---
 
@@ -42,24 +59,25 @@ SHUBHAMOS simulates a dynamic email inbox environment. The environment lifecycle
 
 ---
 
-## 🚀 Quick Start (via Hugging Face Space)
+## 🚀 Evaluation Center (For Judges)
 
-You can run agent benchmarks directly from your browser:
-1.  Navigate to your deployed **Hugging Face Space**.
-2.  In the `Hugging Face Token` field, paste your **HF API Token** (needed to call the Qwen router).
-3.  Choose a **Task** (easy | medium | hard).
+The agent can be verified through three distinct layers of observability:
+
+### 🎮 Interactive Verification (UI)
+1.  Navigate to your **Hugging Face Space**.
+2.  Paste your **Hugging Face Token** in the dashboard.
+3.  Choose a **Simulation Task** (Easy / Medium / Hard).
 4.  Click **Run Agent Benchmark 🚀**.
-5.  View live results and grading metrics.
+5.  Watch the agent process the inbox in real-time and view the final **Grade Report**.
 
----
+### 📝 Automated Startup Audit (Logs)
+Every container boot runs a **Pre-flight Health Check**. Inspect the **Hugging Face Container Logs** for:
+- [x] **Secret Loading**: `HF_TOKEN loaded successfully ✅`
+- [x] **Inference Test**: `Health Check: AI Provider is HEALTHY ✅`
+- [x] **E2E Validation**: Detailed benchmark metrics for `easy` and `medium` tasks.
 
-## 🛠️ API & SDK Integration
-
-For programmatic environment access (training, RL loops), use the standard endpoints:
-- `POST /reset`: Start an episode.
-- `POST /step`: Apply an action.
-- `GET /state`: Deep state inspection (for grading).
-- `GET /grade`: Re-calculate results for the current episode.
+### 🔌 Programmatic API (OpenEnv)
+The environment exposes standard OpenEnv endpoints via FastAPI. Access the **interactive documentation** at `/docs`.
 
 ---
 
@@ -128,8 +146,8 @@ A reference implementation is provided in `inference.py`. It features:
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/shubhamos/shubhamos-email-env
-cd shubhamos-email-env
+git clone https://github.com/shubhamos-ai/meta-openenv
+cd meta-openenv
 pip install -r requirements.txt
 ```
 
@@ -139,6 +157,8 @@ Create a `.env` file in the root directory:
 HF_TOKEN=hf_...
 INTERNAL_AI_KEY=nvapi-...
 ```
+> [!TIP]
+> On Hugging Face, add these as **Secrets** in the Space settings to ensure high-performance inference fallback is active.
 
 ---
 
