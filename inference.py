@@ -37,9 +37,9 @@ from tasks import TASKS
 from graders import EasyGrader, MediumGrader, HardGrader
 
 # ── Configuration (Loaded via .env) ───────────────────────────────────────────
-PRIMARY_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
-PRIMARY_MODEL = os.environ.get("PRIMARY_MODEL", "Qwen/Qwen2.5-72B-Instruct")
-PRIMARY_KEY = os.environ.get("HF_TOKEN", "")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 # ── Internal AI Configuration (Secret Fallback) ──────────────────────────────
 INTERNAL_BASE_URL = os.environ.get("INTERNAL_AI_URL", "https://integrate.api.nvidia.com/v1")
@@ -47,7 +47,7 @@ INTERNAL_MODEL = os.environ.get("INTERNAL_AI_MODEL", "qwen/qwen3.5-122b-a10b")
 INTERNAL_KEY = os.environ.get("INTERNAL_AI_KEY", "")
 
 # Global clients
-primary_client = OpenAI(base_url=PRIMARY_BASE_URL, api_key=PRIMARY_KEY, max_retries=0) if PRIMARY_KEY else None
+primary_client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN, max_retries=0) if HF_TOKEN else None
 internal_client = OpenAI(base_url=INTERNAL_BASE_URL, api_key=INTERNAL_KEY, max_retries=0) if INTERNAL_KEY else None
 
 GRADERS = {
@@ -186,7 +186,7 @@ def call_llm(conversation: List[Dict[str, str]], primary_healthy: bool = True) -
     # ── TIER 1: Primary AI if healthy ──────────────────────────────────
     if primary_client and primary_healthy:
         try:
-            content = _safe_llm_call(primary_client, PRIMARY_MODEL, conversation, timeout=20)
+            content = _safe_llm_call(primary_client, MODEL_NAME, conversation, timeout=20)
             if content:
                 time.sleep(2) # Normal throttle
                 return content.strip()
@@ -213,7 +213,7 @@ def call_llm(conversation: List[Dict[str, str]], primary_healthy: bool = True) -
     if primary_client and not primary_healthy:
         print(f"  [Retry] Trying Primary AI despite previous health failure...")
         try:
-            content = _safe_llm_call(primary_client, PRIMARY_MODEL, conversation, timeout=25)
+            content = _safe_llm_call(primary_client, MODEL_NAME, conversation, timeout=25)
             if content:
                 return content.strip()
         except Exception:

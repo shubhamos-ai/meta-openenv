@@ -14,7 +14,7 @@ short_description: OpenEnv AI email triage environment for agent learning
 [![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-1.0.0-blue.svg)](https://github.com/openenv/spec)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**SHUBHAMOS** is a production-grade [OpenEnv](https://github.com/openenv/spec)-compliant environment designed to evaluate and train AI agents on real-world email inbox management. Agents act as automated triage officers, interacting with a simulated environment to classify, prioritize, and resolve enterprise emails.
+**SHUBHAMOS** is a production-grade [OpenEnv](https://github.com/openenv/spec)-compliant environment (developed by **Meta Research**) designed for the **Meta PyTorch Hackathon**. It evaluates and trains AI agents on real-world email triage tasks, providing high-density reward signals and deterministic grading for operational AI agents.
 
 Built for high-density reward signals and deterministic grading, SHUBHAMOS provides a rigorous benchmark for operational AI agents.
 

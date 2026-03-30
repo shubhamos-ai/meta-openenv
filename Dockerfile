@@ -13,7 +13,13 @@ WORKDIR /app
 #     curl \
 #     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file first to leverage Docker cache
+# Install system dependencies (needed for compiling some python extensions)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file first
 COPY requirements.txt .
 
 # Upgrade pip and install dependencies
