@@ -80,13 +80,17 @@ async def health():
 
 
 @app.post("/reset")
-async def reset(req: ResetRequest):
+async def reset(req: Optional[ResetRequest] = None):
     """
     Start a new episode.
 
     Uses task presets from openenv.yaml but allows override of seed/email_count/max_steps.
     """
     global _initialized
+
+    # Handle empty body by using defaults
+    if req is None:
+        req = ResetRequest(task_id="easy")
 
     if req.task_id not in TASKS:
         raise HTTPException(400, f"Unknown task_id '{req.task_id}'. Choose: easy, medium, hard")
