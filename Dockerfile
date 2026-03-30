@@ -1,36 +1,22 @@
-# Use Python 3.10-slim as base image for stability and smaller footprint
 FROM python:3.10-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Set working directory to /app
 WORKDIR /app
 
-# Install system dependencies if needed (none strictly required for this specific task)
-# RUN apt-get update && apt-get install -y --no-install-recommends \
-#     curl \
-#     && rm -rf /var/lib/apt/lists/*
+# Final trigger to ensure logs start streaming
+RUN echo "Starting build for SHUBHAMOS meta-pytorch-hackathon"
 
-# Install system dependencies (needed for compiling some python extensions)
+# Install absolute bare minimum first
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file first
 COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Upgrade pip and install dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Copy all project files into the container
 COPY . .
 
-# Expose the port used by Hugging Face Spaces (and our FastAPI server)
+# Expose port (default 7860)
 EXPOSE 7860
 
-# Run the FastAPI server using uvicorn (dynamic port for HF Spaces with 7860 fallback)
+# Simple startup
 CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-7860}"]
