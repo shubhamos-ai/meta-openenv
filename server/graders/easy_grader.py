@@ -1,5 +1,5 @@
 """graders/easy_grader.py — Easy task grader (seed=42, pass threshold=0.60)"""
-from graders.base_grader import BaseGrader
+from .base_grader import BaseGrader
 
 
 class EasyGrader(BaseGrader):

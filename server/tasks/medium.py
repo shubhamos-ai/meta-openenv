@@ -55,5 +55,5 @@ class MediumTask:
 
     @classmethod
     def grader_class(cls):
-        from graders.medium_grader import MediumGrader
+        from ..graders.medium_grader import MediumGrader
         return MediumGrader

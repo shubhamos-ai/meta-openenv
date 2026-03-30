@@ -6,9 +6,9 @@ Deterministic graders evaluate agent performance against ground truth.
 Each grader takes a final State and returns a structured score report.
 """
 
-from graders.base_grader import BaseGrader
-from graders.easy_grader import EasyGrader
-from graders.medium_grader import MediumGrader
-from graders.hard_grader import HardGrader
+from .base_grader import BaseGrader
+from .easy_grader import EasyGrader
+from .medium_grader import MediumGrader
+from .hard_grader import HardGrader
 
 __all__ = ["BaseGrader", "EasyGrader", "MediumGrader", "HardGrader"]

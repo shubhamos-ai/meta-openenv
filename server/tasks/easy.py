@@ -54,5 +54,5 @@ class EasyTask:
 
     @classmethod
     def grader_class(cls):
-        from graders.easy_grader import EasyGrader
+        from ..graders.easy_grader import EasyGrader
         return EasyGrader

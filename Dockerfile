@@ -32,5 +32,4 @@ RUN pip install --no-cache-dir -e .
 # HF Spaces use 7860 as the internal port
 EXPOSE 7860
 
-# Start verification health check in background AND the OpenEnv 'server' command
-CMD ["sh", "-c", "python3 server/health_check.py & server"]
+CMD ["server"]

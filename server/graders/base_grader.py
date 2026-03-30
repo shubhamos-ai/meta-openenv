@@ -14,7 +14,7 @@ Graders inspect final State (ground truth visible) against agent actions.
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-from models import Email, State
+from ..models import Email, State
 
 
 class GradeReport:

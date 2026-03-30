@@ -30,11 +30,11 @@ load_dotenv()
 
 from openai import OpenAI
 
-from environment import EmailTriageEnv
-from models import Action, Observation
-from reward import RewardEngine
-from tasks import TASKS
-from graders import EasyGrader, MediumGrader, HardGrader
+from server.environment import EmailTriageEnv
+from server.models import Action, Observation
+from server.reward import RewardEngine
+from server.tasks import TASKS
+from server.graders import EasyGrader, MediumGrader, HardGrader
 
 # ── AI Client Setup ──────────────────────────────────────────────────────────
 

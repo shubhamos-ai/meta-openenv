@@ -55,5 +55,5 @@ class HardTask:
 
     @classmethod
     def grader_class(cls):
-        from graders.hard_grader import HardGrader
+        from ..graders.hard_grader import HardGrader
         return HardGrader

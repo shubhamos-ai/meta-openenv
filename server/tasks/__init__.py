@@ -6,9 +6,9 @@ Each task is a callable that returns a task_config dict suitable for env.reset()
 Tasks are deterministic via fixed seeds defined in openenv.yaml.
 """
 
-from tasks.easy import EasyTask
-from tasks.medium import MediumTask
-from tasks.hard import HardTask
+from .easy import EasyTask
+from .medium import MediumTask
+from .hard import HardTask
 
 TASKS = {
     "easy": EasyTask,

@@ -3,7 +3,8 @@ import os
 import json
 import pandas as pd
 from .server import app as fastapi_app
-from inference import run_agent, TASKS
+from .tasks import TASKS
+from inference import run_agent
 from fastapi.middleware.cors import CORSMiddleware
 
 # ── Gradio Logic ──────────────────────────────────────────────────────────────
@@ -91,6 +92,22 @@ app = gr.mount_gradio_app(fastapi_app, demo, path="/")
 def start_server():
     """CLI entry point for the OpenEnv 'server' command."""
     import uvicorn
+    import threading
+    import time
+    
+    # Start background diagnostics to avoid blocking uvicorn
+    def run_diagnostics():
+        time.sleep(5)
+        try:
+            from .health_check import run_preflight_checks
+            print("\n[Diagnostic] Running background system check...")
+            run_preflight_checks()
+        except Exception as e:
+            print(f"\n[Diagnostic] Background check failed: {e}")
+
+    diag_thread = threading.Thread(target=run_diagnostics, daemon=True)
+    diag_thread.start()
+
     port = int(os.environ.get("PORT", 7860))
     # Note: Use string import to avoid bootstrap issues
     uvicorn.run("server.app:app", host="0.0.0.0", port=port)
