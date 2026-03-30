@@ -10,7 +10,6 @@ authors = [
     { name = "SHUBHAMOS AI", email = "support@shubhamos.ai" }
 ]
 dependencies = [
-    "openenv>=0.2.0",
     "openenv-core>=0.2.0",
     "fastapi",
     "uvicorn",
