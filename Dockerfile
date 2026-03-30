@@ -5,11 +5,14 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install build dependencies for C-extensions (like uvicorn/httpcore)
+# Install build dependencies for C-extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Create logs directory with correct permissions
+RUN mkdir -p /app/logs && chmod -R 777 /app/logs
 
 # Copy requirements FIRST to leverage Docker layer caching
 COPY requirements.txt .
@@ -19,9 +22,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy project files
 COPY . .
 
+# Ensure test scripts are executable
+RUN chmod +x ./tests/e2e_runner.sh
+
 # HF Spaces use 7860 as the internal port
 EXPOSE 7860
 
-# Start unified app (FastAPI + Gradio)
-# Note: we use app.py as the entry point
-CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# Start verification health check AND the unified app
+# Note: health_check.py will log to /app/logs/hf_space_status.log
+CMD ["sh", "-c", "python3 health_check.py && uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}"]
