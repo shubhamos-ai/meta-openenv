@@ -100,7 +100,7 @@ with gr.Blocks(title="SHUBHAMOS: AI Email Triage Benchmarking") as demo:
 # Combine FastAPI and Gradio
 app = gr.mount_gradio_app(fastapi_app, demo, path="/")
 
-def start_server():
+def main():
     """CLI entry point for the OpenEnv 'server' command."""
     import uvicorn
     import threading
@@ -124,4 +124,4 @@ def start_server():
     uvicorn.run("server.app:app", host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    start_server()
+    main()
