@@ -39,9 +39,10 @@ from server.graders import EasyGrader, MediumGrader, HardGrader
 # ── AI Client Setup ──────────────────────────────────────────────────────────
 
 # Load default config from environment
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
 # Global storage for clients to avoid re-initializing if token hasn't changed.
 _primary_client = None
@@ -53,7 +54,7 @@ def setup_clients(hf_token: Optional[str] = None):
     global _primary_client, _internal_client, _current_token
     token = hf_token or HF_TOKEN
     
-    if not token:
+    if not token and not os.getenv("INTERNAL_AI_KEY"):
         print("  [Setup Error] No HF_TOKEN provided.")
         return None, None
         
@@ -379,6 +380,7 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
     obs = env.reset(task_config)
 
     if verbose:
+        print("START")
         print(f"\n{'='*60}")
         print(f"  SHUBHAMOS — Task: {task_id.upper()} | {task_cls.email_count} emails | max {task_cls.max_steps} steps")
         print(f"{'='*60}")
@@ -448,6 +450,7 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
                 break
 
         if verbose:
+            print("STEP")
             print(f"  Step {step+1:02d} | Action: {action.action_type} | Reward: {reward:+.2f} | Fallback: {'Yes' if is_llm_failure else 'No'}")
 
         if done: break
@@ -457,6 +460,9 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
     final_state = env.state()
     report = GRADERS[task_id]().grade(final_state)
     
+    if verbose:
+        print("END")
+
     result = report.to_dict()
     result["total_reward"] = round(total_reward, 4)
     return result
