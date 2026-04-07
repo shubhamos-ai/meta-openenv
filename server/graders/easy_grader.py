@@ -7,3 +7,9 @@ class EasyGrader(BaseGrader):
 
     def task_name(self) -> str:
         return "easy"
+
+
+def grade(state) -> dict:
+    """OpenEnv entrypoint for grading."""
+    report = EasyGrader().grade(state)
+    return report.to_dict()

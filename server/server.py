@@ -32,7 +32,7 @@ from .environment import EmailTriageEnv
 from .models import Action
 from .reward import RewardEngine
 from .tasks import TASKS
-from .graders import EasyGrader, MediumGrader, HardGrader
+from .graders import EasyGrader, MediumGrader, HardGrader, PeacefulGrader, ExtremeGrader
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
@@ -49,9 +49,11 @@ _env.attach_reward_engine(_engine)
 _initialized = False
 
 GRADERS = {
+    "peaceful": PeacefulGrader,
     "easy": EasyGrader,
     "medium": MediumGrader,
     "hard": HardGrader,
+    "extreme": ExtremeGrader,
 }
 
 # ── Request / Response models ─────────────────────────────────────────────────
@@ -171,17 +173,19 @@ async def grade():
 @app.get("/tasks")
 async def list_tasks():
     """List available tasks with their configurations."""
-    result = {}
+    task_list = []
     for tid, cls in TASKS.items():
-        result[tid] = {
+        task_list.append({
             "task_id": cls.task_id,
             "difficulty": cls.difficulty,
             "seed": cls.seed,
             "email_count": cls.email_count,
             "max_steps": cls.max_steps,
             "description": cls.description(),
-        }
-    return JSONResponse(content=result)
+            "grader": True,
+            "grader_name": cls.grader_class().__name__
+        })
+    return JSONResponse(content=task_list)
 
 
 @app.get("/openenv.yaml", response_class=HTMLResponse)

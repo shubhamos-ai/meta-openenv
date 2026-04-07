@@ -6,7 +6,7 @@ description: >
   respond to, and resolve emails across three difficulty tiers.
 author: Shubhamos Team
 homepage: https://huggingface.co/spaces/shubhamos/email-openenv
-task_count: 3
+task_count: 5
 
 # ── Action Space ───────────────────────────────────────────────────────────────
 action_space:
@@ -77,9 +77,21 @@ reward_description: >
 
 # ── Tasks ──────────────────────────────────────────────────────────────────────
 tasks:
+  - id: peaceful
+    name: Peaceful Inbox
+    difficulty: peaceful
+    grader: server.graders.peaceful_grader:grade
+    description: >
+      3 emails with clear, unambiguous categories.
+      Baseline verification task.
+    seed: 1
+    email_count: 3
+    max_steps: 20
+
   - id: easy
     name: Basic Inbox
     difficulty: easy
+    grader: server.graders.easy_grader:grade
     description: >
       5-8 emails with clear, unambiguous categories. Minimal noise.
       Good starting point for agent calibration.
@@ -91,6 +103,7 @@ tasks:
   - id: medium
     name: Support Queue
     difficulty: medium
+    grader: server.graders.medium_grader:grade
     description: >
       15-25 emails with mixed priorities and categories. Agent must sequence
       actions effectively and handle urgency.
@@ -101,12 +114,24 @@ tasks:
   - id: hard
     name: Enterprise Inbox
     difficulty: hard
+    grader: server.graders.hard_grader:grade
     description: >
       40-60 emails with high ambiguity, spam noise, urgent complaints,
       and billing issues. Requires prioritization under pressure.
     seed: 999
     email_count: 50
     max_steps: 300
+
+  - id: extreme
+    name: Extreme Chaos
+    difficulty: extreme
+    grader: server.graders.extreme_grader:grade
+    description: >
+      100 emails under crisis conditions. Total chaos.
+      Tests max throughput and prioritization.
+    seed: 666
+    email_count: 100
+    max_steps: 500
 
 # ── Endpoints (HTTP API) ───────────────────────────────────────────────────────
 endpoints:

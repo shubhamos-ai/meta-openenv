@@ -1,15 +1,15 @@
-"""graders/hard_grader.py — Hard task grader (seed=999, pass threshold=0.50)"""
+"""graders/peaceful_grader.py — Peaceful task grader"""
 from .base_grader import BaseGrader
 
 
-class HardGrader(BaseGrader):
+class PeacefulGrader(BaseGrader):
     PASS_THRESHOLD = 0.50
 
     def task_name(self) -> str:
-        return "hard"
+        return "peaceful"
 
 
 def grade(state) -> dict:
     """OpenEnv entrypoint for grading."""
-    report = HardGrader().grade(state)
+    report = PeacefulGrader().grade(state)
     return report.to_dict()

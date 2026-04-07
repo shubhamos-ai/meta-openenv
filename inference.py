@@ -34,7 +34,7 @@ from server.environment import EmailTriageEnv
 from server.models import Action, Observation
 from server.reward import RewardEngine
 from server.tasks import TASKS
-from server.graders import EasyGrader, MediumGrader, HardGrader
+from server.graders import EasyGrader, MediumGrader, HardGrader, PeacefulGrader, ExtremeGrader
 
 # ── AI Client Setup ──────────────────────────────────────────────────────────
 
@@ -77,9 +77,11 @@ def setup_clients(hf_token: Optional[str] = None):
     return _primary_client, _internal_client
 
 GRADERS = {
+    "peaceful": PeacefulGrader,
     "easy": EasyGrader,
     "medium": MediumGrader,
     "hard": HardGrader,
+    "extreme": ExtremeGrader,
 }
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -380,7 +382,8 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
     obs = env.reset(task_config)
 
     if verbose:
-        print(f"[START] task={task_id}", flush=True)
+        model_name_env = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+        print(f"[START] task={task_id} env=shubhamos model={model_name_env}", flush=True)
         print(f"\n{'='*60}")
         print(f"  SHUBHAMOS — Task: {task_id.upper()} | {task_cls.email_count} emails | max {task_cls.max_steps} steps")
         print(f"{'='*60}")
@@ -391,6 +394,7 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
     failure_streak = 0
     last_action_summary = ""
     step_times: List[float] = []
+    rewards_list: List[float] = []
 
     for step in range(task_cls.max_steps):
         # STOP EARLY: All handled?
@@ -435,22 +439,32 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
             failure_streak = 0
 
         # Apply action
+        done = False
+        error = None
         try:
             obs, reward, done, info = env.step(action)
             total_reward += reward
             last_action_summary = f"Success: {action.action_type} on {action.email_id}"
         except Exception as e:
-            last_action_summary = f"Error: {str(e)[:50]}"
+            error = str(e)[:50].replace('\n', ' ')
+            last_action_summary = f"Error: {error}"
             # One last try with fallback
             try:
                 action = get_fallback_action(obs, target_email.id)
                 obs, reward, done, info = env.step(action)
                 total_reward += reward
-            except Exception:
-                break
+                error = None
+            except Exception as e2:
+                reward = 0.0
+                error = str(e2)[:50].replace('\n', ' ')
+                done = True
+
+        rewards_list.append(reward)
 
         if verbose:
-            print(f"[STEP] step={step+1} reward={reward}", flush=True)
+            done_val = "true" if done else "false"
+            error_val = "null" if not error else f"'{error}'"
+            print(f"[STEP] step={step+1} action={action.action_type} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
             print(f"  Step {step+1:02d} | Action: {action.action_type} | Reward: {reward:+.2f} | Fallback: {'Yes' if is_llm_failure else 'No'}")
 
         if done: break
@@ -462,8 +476,12 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
     
     result = report.to_dict()
     score = result.get("scores", {}).get("final_score", 0.0)
+    
     if verbose:
-        print(f"[END] task={task_id} score={score} steps={step+1}", flush=True)
+        rewards_str = ",".join(f"{r:.2f}" for r in rewards_list)
+        success_val = "true" if score > 0 else "false"
+        steps_taken = len(rewards_list)
+        print(f"[END] success={success_val} steps={steps_taken} score={score:.3f} rewards={rewards_str}", flush=True)
 
     result["total_reward"] = round(total_reward, 4)
     return result
@@ -498,9 +516,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--task",
-        choices=["easy", "medium", "hard", "all"],
-        default="easy",
-        help="Task difficulty to run (default: easy)",
+        choices=["peaceful", "easy", "medium", "hard", "extreme", "all"],
+        default="all",
+        help="Task difficulty to run (default: all — runs all 5 tasks)",
     )
     parser.add_argument("--verbose", action="store_true", default=True)
     parser.add_argument("--quiet", action="store_true", help="Suppress step-by-step output")
@@ -515,7 +533,7 @@ def main() -> None:
     # Use the global clients initialized above
     verbose = not args.quiet
     
-    tasks_to_run = ["easy", "medium", "hard"] if args.task == "all" else [args.task]
+    tasks_to_run = ["peaceful", "easy", "medium", "hard", "extreme"] if args.task == "all" else [args.task]
     all_results: Dict[str, Any] = {}
 
     for task_id in tasks_to_run:

@@ -7,3 +7,9 @@ class MediumGrader(BaseGrader):
 
     def task_name(self) -> str:
         return "medium"
+
+
+def grade(state) -> dict:
+    """OpenEnv entrypoint for grading."""
+    report = MediumGrader().grade(state)
+    return report.to_dict()
