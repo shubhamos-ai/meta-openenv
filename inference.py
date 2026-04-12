@@ -380,7 +380,7 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
     obs = env.reset(task_config)
 
     if verbose:
-        print("START")
+        print(f"[START] task={task_id}", flush=True)
         print(f"\n{'='*60}")
         print(f"  SHUBHAMOS — Task: {task_id.upper()} | {task_cls.email_count} emails | max {task_cls.max_steps} steps")
         print(f"{'='*60}")
@@ -450,7 +450,7 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
                 break
 
         if verbose:
-            print("STEP")
+            print(f"[STEP] step={step+1} reward={reward}", flush=True)
             print(f"  Step {step+1:02d} | Action: {action.action_type} | Reward: {reward:+.2f} | Fallback: {'Yes' if is_llm_failure else 'No'}")
 
         if done: break
@@ -460,10 +460,11 @@ def run_agent(task_id: str, hf_token: Optional[str] = None, verbose: bool = True
     final_state = env.state()
     report = GRADERS[task_id]().grade(final_state)
     
-    if verbose:
-        print("END")
-
     result = report.to_dict()
+    score = result.get("scores", {}).get("final_score", 0.0)
+    if verbose:
+        print(f"[END] task={task_id} score={score} steps={step+1}", flush=True)
+
     result["total_reward"] = round(total_reward, 4)
     return result
 
