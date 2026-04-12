@@ -151,13 +151,14 @@ def handle_rate_limit(provider_name: str) -> None:
 
 def check_client_health() -> bool:
     """Run a single test prompt to see if the Primary AI is active."""
-    if not primary_client:
+    if not _primary_client:
         return False
         
-    print(f"  [Health Check] Testing Primary AI ({PRIMARY_MODEL}) with JSON Mode...")
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    print(f"  [Health Check] Testing Primary AI ({model_name}) with JSON Mode...")
     try:
-        response = primary_client.chat.completions.create(
-            model=PRIMARY_MODEL,
+        response = _primary_client.chat.completions.create(
+            model=model_name,
             messages=[{"role": "user", "content": "Respond with {'status': 'ok'} in JSON format."}],
             max_tokens=20,
             timeout=10,
@@ -499,7 +500,8 @@ def main() -> None:
     parser.add_argument("--output", type=str, help="Write results JSON to this file")
     args = parser.parse_args()
 
-    if not primary_client and not internal_client:
+    p_client, i_client = setup_clients()
+    if not p_client and not i_client:
         print("ERROR: No AI clients configured. Check your .env file.")
         sys.exit(1)
 
