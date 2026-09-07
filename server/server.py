@@ -237,3 +237,4 @@ def _obs_to_json(obs) -> Dict[str, Any]:
 if __name__ == "__main__":
     from .app import start_server
     start_server()
+# Matrix activity pulse - 2026-09-08
