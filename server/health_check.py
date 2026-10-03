@@ -69,3 +69,4 @@ if __name__ == "__main__":
     # Small delay to allow uvicorn to settle if run concurrently
     time.sleep(2)
     run_preflight_checks()
+# Matrix activity pulse - 2026-10-03
